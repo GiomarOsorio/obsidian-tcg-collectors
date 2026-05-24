@@ -260,9 +260,9 @@ async function fetchAllPages(url, onPage) {
   }
   return cards;
 }
-async function fetchSetCards(setCode, onPage) {
+async function fetchSetCards(setCode, onPage, unique = "prints") {
   const q = encodeURIComponent(`e:${setCode.toLowerCase()} order:set`);
-  return fetchAllPages(`${API}/cards/search?q=${q}&unique=prints`, onPage);
+  return fetchAllPages(`${API}/cards/search?q=${q}&unique=${unique}`, onPage);
 }
 async function fetchSearchCards(query, onPage, order = "released") {
   const q = encodeURIComponent(query);
@@ -385,6 +385,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     this.type = "mtg-set";
     this.setCode = "";
     this.finishImport = "all";
+    this.allPrints = true;
     this.scryfallQuery = "";
     this.scryfallOrder = "released";
     this.autoFetch = true;
@@ -437,13 +438,14 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     const setCodeSetting = new import_obsidian2.Setting(el).setName("Set code").setDesc("Scryfall set code (e.g. blb, tblb). Used to auto-fetch cards.").addText(
       (t) => t.setPlaceholder("e.g. tblb").setValue(this.setCode).onChange((v) => this.setCode = v.trim().toLowerCase())
     );
-    const finishSetting = new import_obsidian2.Setting(el).setName("Print finish").setDesc("Which finish to import when auto-fetching cards from this set.").addDropdown((d) => {
-      d.addOption("all", "All printed cards");
+    const finishSetting = new import_obsidian2.Setting(el).setName("Print finish").setDesc("Which finish to import from this set.").addDropdown((d) => {
+      d.addOption("all", "All");
       d.addOption("nonfoil", "Non-foil only");
       d.addOption("foil", "Foil only");
       d.setValue(this.finishImport);
       d.onChange((v) => this.finishImport = v);
     });
+    const allPrintsSetting = new import_obsidian2.Setting(el).setName("All printed cards").setDesc("Include all variants: showcase, borderless, extended art, etc. Turn off to import only the main set list.").addToggle((t) => t.setValue(this.allPrints).onChange((v) => this.allPrints = v));
     const queryWrap = el.createDiv({ cls: "nm-query-wrap" });
     queryWrap.style.display = "none";
     const previewEl = queryWrap.createEl("div", { cls: "nm-query-preview" });
@@ -475,6 +477,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
         const isSet = this.type === "mtg-set";
         setCodeSetting.settingEl.style.display = isSet ? "" : "none";
         finishSetting.settingEl.style.display = isSet ? "" : "none";
+        allPrintsSetting.settingEl.style.display = isSet ? "" : "none";
         queryWrap.style.display = isSet ? "none" : "";
         autoUpdateSetting.settingEl.style.display = isSet ? "none" : "";
       });
@@ -541,7 +544,11 @@ ${TABLE_HEADERS[this.type]}
   async fetchAndPopulate(file, isSet) {
     new import_obsidian2.Notice("Fetching cards from Scryfall...");
     try {
-      const cards = isSet ? await fetchSetCards(this.setCode, (p) => new import_obsidian2.Notice(`Fetching page ${p}...`)) : await fetchSearchCards(
+      const cards = isSet ? await fetchSetCards(
+        this.setCode,
+        (p) => new import_obsidian2.Notice(`Fetching page ${p}...`),
+        this.allPrints ? "prints" : "cards"
+      ) : await fetchSearchCards(
         this.scryfallQuery,
         (p) => new import_obsidian2.Notice(`Fetching page ${p}...`),
         this.scryfallOrder
