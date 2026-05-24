@@ -7,7 +7,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
-## [1.1.0] — 2026-05-24
+## [0.2.0] — 2026-05-24
 
 ### Added
 - **Card prices** — live USD prices fetched from Scryfall `/cards/collection` (batch, 75/req)
@@ -16,20 +16,24 @@ Versioning: [Semantic Versioning](https://semver.org/)
   - Hero stats on dashboard: global invested + to-complete totals
   - Prices cached in memory per session (not stored in markdown)
   - Foil cards use `prices.usd_foil`, non-foil use `prices.usd`
+- **Multi-provider price API** — Scryfall USD/EUR, TCGPlayer (API key), Cardmarket (OAuth 1.0a)
+  - Fallback to Scryfall USD if provider credentials missing
+  - Settings UI: dropdown + show/hide credential sections per provider
 - **Price sort** — new sort options: Price ↓ / Price ↑ in detail view
 - **Full-width dashboard** — opens as a tab instead of right side panel
 - **New Collection modal — game tabs** — tab bar for MTG / Pokémon / One Piece / Yu-Gi-Oh!
   - MTG tab: full existing functionality
-  - Pokémon, One Piece, Yu-Gi-Oh!: styled "Coming soon" screens
+  - Pokémon, One Piece, Yu-Gi-Oh!: styled "Coming soon" screens with game branding
 - **Mobile support** — all HTTP calls use Obsidian `requestUrl` (no CORS/Capacitor issues)
   - Touch-friendly button sizing via `@media (pointer: coarse)`
 - **Dashboard hero stats** — 4-box summary row (collections, cards owned, invested, to complete)
 - **Collection card thumbnails** — first card's artwork shown in collection list
 - **Collection price row** — `$X.XX invested · $X.XX to complete` per collection
+- **Responsive layout** — CSS container queries (`@container`) for panel-width-aware layout in Obsidian split-pane
 
 ### Changed
 - Dashboard now opens as a full-width tab on both desktop and mobile
-- Collection list redesigned: 2-column grid (desktop), 1-column (mobile)
+- Collection list redesigned: 2-column grid (desktop), 1-column (narrow panel)
 - Card tiles slightly larger (`minmax(130px, 1fr)`)
 - Rarity abbreviation to single letter in tiles
 - Hero stats detail section in collection detail view
@@ -39,11 +43,11 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
-## [1.0.0] — 2026-05-24
+## [0.1.0] — 2026-05-24
 
 ### Added
 - Initial release
-- Dashboard view (right panel) showing all collections
+- Dashboard view showing all collections
 - Collection list grouped by type: MTG Sets, Theme Collections, Custom
 - Collection detail view: card grid with Scryfall artwork
 - Toggle owned/missing — writes back to markdown instantly
