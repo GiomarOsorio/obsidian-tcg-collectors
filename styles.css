@@ -10,6 +10,8 @@
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  container-type: inline-size;
+  container-name: dashboard;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
@@ -727,6 +729,19 @@
 .csm-rarity-rare    { color: #f5c518; }
 .csm-rarity-mythic  { color: #ff7b22; }
 
+/* ── Container queries (panel-width-aware) ───────────────────────────────────── */
+@container dashboard (max-width: 660px) {
+  .col-hero { grid-template-columns: repeat(2, 1fr); }
+  .col-collection-grid { grid-template-columns: 1fr; }
+}
+
+@container dashboard (max-width: 420px) {
+  .col-hero { grid-template-columns: 1fr 1fr; }
+  .col-card-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  .col-controls-row { flex-direction: column; align-items: flex-start; }
+  .col-sort-wrap { margin-left: 0; }
+}
+
 /* ── Mobile / touch ───────────────────────────────────────────────────────────── */
 @media (pointer: coarse) {
   .col-toggle {
@@ -737,12 +752,4 @@
   .col-btn-icon { padding: 9px 12px; }
   .col-btn { padding: 9px 14px; }
   .col-tab { padding: 9px 14px; }
-  .col-collection-grid { grid-template-columns: 1fr; }
-  .col-hero { grid-template-columns: repeat(2, 1fr); }
-  .col-card-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
-}
-
-@media (max-width: 480px) {
-  .collectors-root { padding: 12px; }
-  .col-hero { grid-template-columns: repeat(2, 1fr); }
 }
