@@ -817,13 +817,13 @@ var DashboardView = class extends import_obsidian5.ItemView {
   }
   // ── List screen ───────────────────────────────────────────────────────────────
   renderList(root) {
-    const header = root.createDiv({ cls: "col-header" });
+    const header = root.createDiv({ cls: "col-header col-header-stack" });
     header.createEl("h2", { text: "Collectors", cls: "col-title" });
     const actions = header.createDiv({ cls: "col-actions" });
     const refreshBtn = actions.createEl("button", { cls: "col-btn-icon", attr: { title: "Refresh" } });
     refreshBtn.innerHTML = "\u21BB";
     refreshBtn.addEventListener("click", () => this.refresh());
-    const newBtn = actions.createEl("button", { cls: "col-btn", text: "+ New" });
+    const newBtn = actions.createEl("button", { cls: "col-btn", text: "+ New Collection" });
     newBtn.addEventListener(
       "click",
       () => new NewCollectionModal(this.app, this.plugin, () => this.refresh()).open()
@@ -987,26 +987,30 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const tabs = row2.createDiv({ cls: "col-tabs" });
     const filterValues = ["all", "owned", "missing"];
     const tabLabels = { all: "All", owned: "Owned", missing: "Missing" };
-    const finishWrap = row2.createDiv({ cls: "col-finish-wrap" });
-    const finishOptions = [
-      { value: "foil", label: "\u2726 Foil" },
-      { value: "nonfoil", label: "\u25C7 Normal" }
-    ];
-    for (const fo of finishOptions) {
-      const lbl = finishWrap.createEl("label", { cls: "col-finish-label" });
-      const cb = lbl.createEl("input", {
-        attr: { type: "checkbox", checked: this.finishFilter === fo.value || this.finishFilter === "all" ? true : false }
-      });
-      lbl.createEl("span", { text: fo.label });
-      cb.addEventListener("change", () => {
-        const foilChecked = finishWrap.querySelectorAll("input")[0].checked;
-        const normalChecked = finishWrap.querySelectorAll("input")[1].checked;
-        if (foilChecked && normalChecked) this.finishFilter = "all";
-        else if (foilChecked) this.finishFilter = "foil";
-        else if (normalChecked) this.finishFilter = "nonfoil";
-        else this.finishFilter = "all";
-        this.renderCards(grid, coll);
-      });
+    const hasFoil = coll.cards.some((c) => c.id.endsWith("_f"));
+    const hasNonFoil = coll.cards.some((c) => c.id.endsWith("_n"));
+    if (hasFoil && hasNonFoil) {
+      const finishWrap = row2.createDiv({ cls: "col-finish-wrap" });
+      const finishOptions = [
+        { value: "foil", label: "\u2726 Foil" },
+        { value: "nonfoil", label: "\u25C7 Normal" }
+      ];
+      for (const fo of finishOptions) {
+        const lbl = finishWrap.createEl("label", { cls: "col-finish-label" });
+        const cb = lbl.createEl("input", { attr: { type: "checkbox" } });
+        cb.checked = this.finishFilter === fo.value || this.finishFilter === "all";
+        lbl.createEl("span", { text: fo.label });
+        cb.addEventListener("change", () => {
+          const inputs = finishWrap.querySelectorAll("input");
+          const foilChecked = inputs[0].checked;
+          const normalChecked = inputs[1].checked;
+          if (foilChecked && normalChecked) this.finishFilter = "all";
+          else if (foilChecked) this.finishFilter = "foil";
+          else if (normalChecked) this.finishFilter = "nonfoil";
+          else this.finishFilter = "all";
+          this.renderCards(grid, coll);
+        });
+      }
     }
     const sortWrap = row2.createDiv({ cls: "col-sort-wrap" });
     sortWrap.createEl("span", { cls: "col-sort-label", text: "Sort:" });

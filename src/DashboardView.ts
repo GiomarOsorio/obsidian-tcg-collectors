@@ -137,7 +137,7 @@ export class DashboardView extends ItemView {
   // ── List screen ───────────────────────────────────────────────────────────────
 
   private renderList(root: HTMLElement) {
-    const header = root.createDiv({ cls: 'col-header' });
+    const header = root.createDiv({ cls: 'col-header col-header-stack' });
     header.createEl('h2', { text: 'Collectors', cls: 'col-title' });
 
     const actions = header.createDiv({ cls: 'col-actions' });
@@ -145,7 +145,7 @@ export class DashboardView extends ItemView {
     refreshBtn.innerHTML = '↻';
     refreshBtn.addEventListener('click', () => this.refresh());
 
-    const newBtn = actions.createEl('button', { cls: 'col-btn', text: '+ New' });
+    const newBtn = actions.createEl('button', { cls: 'col-btn', text: '+ New Collection' });
     newBtn.addEventListener('click', () =>
       new NewCollectionModal(this.app, this.plugin, () => this.refresh()).open()
     );
@@ -343,27 +343,31 @@ export class DashboardView extends ItemView {
     const filterValues: Filter[] = ['all', 'owned', 'missing'];
     const tabLabels: Record<Filter, string> = { all: 'All', owned: 'Owned', missing: 'Missing' };
 
-    // Foil filter checkboxes
-    const finishWrap = row2.createDiv({ cls: 'col-finish-wrap' });
-    const finishOptions: Array<{ value: FinishFilter; label: string }> = [
-      { value: 'foil',    label: '✦ Foil' },
-      { value: 'nonfoil', label: '◇ Normal' },
-    ];
-    for (const fo of finishOptions) {
-      const lbl = finishWrap.createEl('label', { cls: 'col-finish-label' });
-      const cb = lbl.createEl('input', {
-        attr: { type: 'checkbox', checked: this.finishFilter === fo.value || this.finishFilter === 'all' ? true : false },
-      });
-      lbl.createEl('span', { text: fo.label });
-      cb.addEventListener('change', () => {
-        const foilChecked   = (finishWrap.querySelectorAll('input')[0] as HTMLInputElement).checked;
-        const normalChecked = (finishWrap.querySelectorAll('input')[1] as HTMLInputElement).checked;
-        if (foilChecked && normalChecked)   this.finishFilter = 'all';
-        else if (foilChecked)               this.finishFilter = 'foil';
-        else if (normalChecked)             this.finishFilter = 'nonfoil';
-        else                                this.finishFilter = 'all'; // both unchecked → show all
-        this.renderCards(grid, coll);
-      });
+    // Foil filter checkboxes — only show if collection has both finishes
+    const hasFoil    = coll.cards.some(c => c.id.endsWith('_f'));
+    const hasNonFoil = coll.cards.some(c => c.id.endsWith('_n'));
+    if (hasFoil && hasNonFoil) {
+      const finishWrap = row2.createDiv({ cls: 'col-finish-wrap' });
+      const finishOptions: Array<{ value: FinishFilter; label: string }> = [
+        { value: 'foil',    label: '✦ Foil' },
+        { value: 'nonfoil', label: '◇ Normal' },
+      ];
+      for (const fo of finishOptions) {
+        const lbl = finishWrap.createEl('label', { cls: 'col-finish-label' });
+        const cb = lbl.createEl('input', { attr: { type: 'checkbox' } });
+        (cb as HTMLInputElement).checked = (this.finishFilter === fo.value || this.finishFilter === 'all');
+        lbl.createEl('span', { text: fo.label });
+        cb.addEventListener('change', () => {
+          const inputs = finishWrap.querySelectorAll('input');
+          const foilChecked   = (inputs[0] as HTMLInputElement).checked;
+          const normalChecked = (inputs[1] as HTMLInputElement).checked;
+          if (foilChecked && normalChecked) this.finishFilter = 'all';
+          else if (foilChecked)             this.finishFilter = 'foil';
+          else if (normalChecked)           this.finishFilter = 'nonfoil';
+          else                              this.finishFilter = 'all';
+          this.renderCards(grid, coll);
+        });
+      }
     }
 
     // Sort select
