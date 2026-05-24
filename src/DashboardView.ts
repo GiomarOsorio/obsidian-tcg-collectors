@@ -12,6 +12,7 @@ import {
 export const DASHBOARD_VIEW_TYPE = 'collectors-dashboard';
 
 type Filter = 'all' | 'owned' | 'missing';
+type FinishFilter = 'all' | 'foil' | 'nonfoil';
 type Screen = 'list' | 'detail';
 
 export class DashboardView extends ItemView {
@@ -20,6 +21,7 @@ export class DashboardView extends ItemView {
   private screen: Screen = 'list';
   private selected: Collection | null = null;
   private filter: Filter = 'all';
+  private finishFilter: FinishFilter = 'all';
   private sortBy: SortBy = 'number';
   private searchQuery = '';
 
@@ -264,6 +266,7 @@ export class DashboardView extends ItemView {
       this.selected = coll;
       this.screen = 'detail';
       this.filter = 'all';
+      this.finishFilter = 'all';
       this.searchQuery = '';
       this.render();
     });
@@ -326,7 +329,7 @@ export class DashboardView extends ItemView {
     // Detail hero stats
     this.renderDetailHero(root, coll);
 
-    // Controls
+    // ── Controls ──────────────────────────────────────────────────────────────
     const controls = root.createDiv({ cls: 'col-controls' });
     const searchInput = controls.createEl('input', {
       cls: 'col-search',
@@ -335,9 +338,53 @@ export class DashboardView extends ItemView {
 
     const row2 = controls.createDiv({ cls: 'col-controls-row' });
 
+    // Owned/missing filter tabs
     const tabs = row2.createDiv({ cls: 'col-tabs' });
     const filterValues: Filter[] = ['all', 'owned', 'missing'];
     const tabLabels: Record<Filter, string> = { all: 'All', owned: 'Owned', missing: 'Missing' };
+
+    // Foil filter checkboxes
+    const finishWrap = row2.createDiv({ cls: 'col-finish-wrap' });
+    const finishOptions: Array<{ value: FinishFilter; label: string }> = [
+      { value: 'foil',    label: '✦ Foil' },
+      { value: 'nonfoil', label: '◇ Normal' },
+    ];
+    for (const fo of finishOptions) {
+      const lbl = finishWrap.createEl('label', { cls: 'col-finish-label' });
+      const cb = lbl.createEl('input', {
+        attr: { type: 'checkbox', checked: this.finishFilter === fo.value || this.finishFilter === 'all' ? true : false },
+      });
+      lbl.createEl('span', { text: fo.label });
+      cb.addEventListener('change', () => {
+        const foilChecked   = (finishWrap.querySelectorAll('input')[0] as HTMLInputElement).checked;
+        const normalChecked = (finishWrap.querySelectorAll('input')[1] as HTMLInputElement).checked;
+        if (foilChecked && normalChecked)   this.finishFilter = 'all';
+        else if (foilChecked)               this.finishFilter = 'foil';
+        else if (normalChecked)             this.finishFilter = 'nonfoil';
+        else                                this.finishFilter = 'all'; // both unchecked → show all
+        this.renderCards(grid, coll);
+      });
+    }
+
+    // Sort select
+    const sortWrap = row2.createDiv({ cls: 'col-sort-wrap' });
+    sortWrap.createEl('span', { cls: 'col-sort-label', text: 'Sort:' });
+    const sortSelect = sortWrap.createEl('select', { cls: 'col-sort-select' });
+    const sortOptions: Array<{ value: SortBy; label: string }> = [
+      { value: 'number',       label: 'Number' },
+      { value: 'name',         label: 'Name' },
+      { value: 'price-desc',   label: 'Price ↓' },
+      { value: 'price-asc',    label: 'Price ↑' },
+      { value: 'release-desc', label: 'Newest first' },
+      { value: 'release-asc',  label: 'Oldest first' },
+    ];
+    for (const opt of sortOptions) {
+      const o = sortSelect.createEl('option', { attr: { value: opt.value }, text: opt.label });
+      if (opt.value === this.sortBy) o.selected = true;
+    }
+
+    // Grid — declared BEFORE event listeners that reference it
+    const grid = root.createDiv({ cls: 'col-card-grid' });
 
     for (const f of filterValues) {
       const tab = tabs.createEl('button', {
@@ -352,27 +399,10 @@ export class DashboardView extends ItemView {
       });
     }
 
-    const sortWrap = row2.createDiv({ cls: 'col-sort-wrap' });
-    sortWrap.createEl('span', { cls: 'col-sort-label', text: 'Sort:' });
-    const sortSelect = sortWrap.createEl('select', { cls: 'col-sort-select' });
-    const sortOptions: Array<{ value: SortBy; label: string }> = [
-      { value: 'number', label: 'Number' },
-      { value: 'name', label: 'Name' },
-      { value: 'price-desc', label: 'Price ↓' },
-      { value: 'price-asc', label: 'Price ↑' },
-      { value: 'release-desc', label: 'Newest first' },
-      { value: 'release-asc', label: 'Oldest first' },
-    ];
-    for (const opt of sortOptions) {
-      const o = sortSelect.createEl('option', { value: opt.value, text: opt.label });
-      if (opt.value === this.sortBy) o.selected = true;
-    }
     sortSelect.addEventListener('change', () => {
       this.sortBy = sortSelect.value as SortBy;
       this.renderCards(grid, coll);
     });
-
-    const grid = root.createDiv({ cls: 'col-card-grid' });
 
     searchInput.addEventListener('input', () => {
       this.searchQuery = searchInput.value;
@@ -416,13 +446,17 @@ export class DashboardView extends ItemView {
     const filtered = coll.cards.filter(card => {
       if (this.filter === 'owned' && !card.owned) return false;
       if (this.filter === 'missing' && card.owned) return false;
+      const isFoil = card.id.endsWith('_f');
+      if (this.finishFilter === 'foil' && !isFoil) return false;
+      if (this.finishFilter === 'nonfoil' && isFoil) return false;
       if (this.searchQuery) {
         return card.name.toLowerCase().includes(this.searchQuery.toLowerCase());
       }
       return true;
     });
 
-    this.sortCards(filtered).then(sorted => {
+    const paint = (sorted: CollectionCard[]) => {
+      grid.empty();
       if (sorted.length === 0) {
         grid.createDiv({ cls: 'col-empty', text: 'No cards match this filter.' });
         return;
@@ -430,38 +464,46 @@ export class DashboardView extends ItemView {
       for (const card of sorted) {
         this.renderCardTile(grid, card, coll);
       }
-    });
-  }
+    };
 
-  private async sortCards(cards: CollectionCard[]): Promise<CollectionCard[]> {
+    // Synchronous sorts render immediately — no async race conditions
     if (this.sortBy === 'name') {
-      return [...cards].sort((a, b) => a.name.localeCompare(b.name));
+      paint([...filtered].sort((a, b) => a.name.localeCompare(b.name)));
+      return;
     }
     if (this.sortBy === 'number') {
-      return [...cards].sort((a, b) => {
+      paint([...filtered].sort((a, b) => {
         if (a.set !== b.set) return a.set.localeCompare(b.set);
         return parseInt(a.number) - parseInt(b.number) || a.number.localeCompare(b.number);
-      });
+      }));
+      return;
     }
     if (this.sortBy === 'price-desc' || this.sortBy === 'price-asc') {
       const dir = this.sortBy === 'price-desc' ? -1 : 1;
-      return [...cards].sort((a, b) => {
+      paint([...filtered].sort((a, b) => {
         const pa = this.cardPrice(a) ?? -1;
         const pb = this.cardPrice(b) ?? -1;
         return (pa - pb) * dir;
-      });
+      }));
+      return;
     }
-    const uniqueSets = [...new Set(cards.map(c => c.set.toLowerCase()))];
-    const missing = uniqueSets.filter(s => !getSetDate(s));
-    await Promise.all(missing.map(s => fetchSetReleasedAt(s)));
 
+    // Release sort needs async fetch for set dates
+    const uniqueSets = [...new Set(filtered.map(c => c.set.toLowerCase()))];
+    const missing = uniqueSets.filter(s => !getSetDate(s));
     const dir = this.sortBy === 'release-desc' ? -1 : 1;
-    return [...cards].sort((a, b) => {
+    const finish = (cards: CollectionCard[]) => paint([...cards].sort((a, b) => {
       const da = getSetDate(a.set) ?? '0000-00-00';
       const db = getSetDate(b.set) ?? '0000-00-00';
       if (da !== db) return da < db ? -dir : dir;
       return (parseInt(a.number) - parseInt(b.number)) || a.number.localeCompare(b.number);
-    });
+    }));
+
+    if (missing.length === 0) {
+      finish(filtered);
+    } else {
+      Promise.all(missing.map(s => fetchSetReleasedAt(s))).then(() => finish(filtered));
+    }
   }
 
   private renderCardTile(grid: HTMLElement, card: CollectionCard, coll: Collection) {

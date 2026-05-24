@@ -716,6 +716,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     this.screen = "list";
     this.selected = null;
     this.filter = "all";
+    this.finishFilter = "all";
     this.sortBy = "number";
     this.searchQuery = "";
     this.plugin = plugin;
@@ -927,6 +928,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
       this.selected = coll;
       this.screen = "detail";
       this.filter = "all";
+      this.finishFilter = "all";
       this.searchQuery = "";
       this.render();
     });
@@ -985,16 +987,25 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const tabs = row2.createDiv({ cls: "col-tabs" });
     const filterValues = ["all", "owned", "missing"];
     const tabLabels = { all: "All", owned: "Owned", missing: "Missing" };
-    for (const f of filterValues) {
-      const tab = tabs.createEl("button", {
-        cls: `col-tab${this.filter === f ? " col-tab-active" : ""}`,
-        text: tabLabels[f]
+    const finishWrap = row2.createDiv({ cls: "col-finish-wrap" });
+    const finishOptions = [
+      { value: "foil", label: "\u2726 Foil" },
+      { value: "nonfoil", label: "\u25C7 Normal" }
+    ];
+    for (const fo of finishOptions) {
+      const lbl = finishWrap.createEl("label", { cls: "col-finish-label" });
+      const cb = lbl.createEl("input", {
+        attr: { type: "checkbox", checked: this.finishFilter === fo.value || this.finishFilter === "all" ? true : false }
       });
-      tab.addEventListener("click", () => {
-        this.filter = f;
+      lbl.createEl("span", { text: fo.label });
+      cb.addEventListener("change", () => {
+        const foilChecked = finishWrap.querySelectorAll("input")[0].checked;
+        const normalChecked = finishWrap.querySelectorAll("input")[1].checked;
+        if (foilChecked && normalChecked) this.finishFilter = "all";
+        else if (foilChecked) this.finishFilter = "foil";
+        else if (normalChecked) this.finishFilter = "nonfoil";
+        else this.finishFilter = "all";
         this.renderCards(grid, coll);
-        tabs.querySelectorAll(".col-tab").forEach((t) => t.removeClass("col-tab-active"));
-        tab.addClass("col-tab-active");
       });
     }
     const sortWrap = row2.createDiv({ cls: "col-sort-wrap" });
@@ -1009,14 +1020,26 @@ var DashboardView = class extends import_obsidian5.ItemView {
       { value: "release-asc", label: "Oldest first" }
     ];
     for (const opt of sortOptions) {
-      const o = sortSelect.createEl("option", { value: opt.value, text: opt.label });
+      const o = sortSelect.createEl("option", { attr: { value: opt.value }, text: opt.label });
       if (opt.value === this.sortBy) o.selected = true;
+    }
+    const grid = root.createDiv({ cls: "col-card-grid" });
+    for (const f of filterValues) {
+      const tab = tabs.createEl("button", {
+        cls: `col-tab${this.filter === f ? " col-tab-active" : ""}`,
+        text: tabLabels[f]
+      });
+      tab.addEventListener("click", () => {
+        this.filter = f;
+        this.renderCards(grid, coll);
+        tabs.querySelectorAll(".col-tab").forEach((t) => t.removeClass("col-tab-active"));
+        tab.addClass("col-tab-active");
+      });
     }
     sortSelect.addEventListener("change", () => {
       this.sortBy = sortSelect.value;
       this.renderCards(grid, coll);
     });
-    const grid = root.createDiv({ cls: "col-card-grid" });
     searchInput.addEventListener("input", () => {
       this.searchQuery = searchInput.value;
       this.renderCards(grid, coll);
@@ -1047,12 +1070,16 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const filtered = coll.cards.filter((card) => {
       if (this.filter === "owned" && !card.owned) return false;
       if (this.filter === "missing" && card.owned) return false;
+      const isFoil = card.id.endsWith("_f");
+      if (this.finishFilter === "foil" && !isFoil) return false;
+      if (this.finishFilter === "nonfoil" && isFoil) return false;
       if (this.searchQuery) {
         return card.name.toLowerCase().includes(this.searchQuery.toLowerCase());
       }
       return true;
     });
-    this.sortCards(filtered).then((sorted) => {
+    const paint = (sorted) => {
+      grid.empty();
       if (sorted.length === 0) {
         grid.createDiv({ cls: "col-empty", text: "No cards match this filter." });
         return;
@@ -1060,38 +1087,43 @@ var DashboardView = class extends import_obsidian5.ItemView {
       for (const card of sorted) {
         this.renderCardTile(grid, card, coll);
       }
-    });
-  }
-  async sortCards(cards) {
+    };
     if (this.sortBy === "name") {
-      return [...cards].sort((a, b) => a.name.localeCompare(b.name));
+      paint([...filtered].sort((a, b) => a.name.localeCompare(b.name)));
+      return;
     }
     if (this.sortBy === "number") {
-      return [...cards].sort((a, b) => {
+      paint([...filtered].sort((a, b) => {
         if (a.set !== b.set) return a.set.localeCompare(b.set);
         return parseInt(a.number) - parseInt(b.number) || a.number.localeCompare(b.number);
-      });
+      }));
+      return;
     }
     if (this.sortBy === "price-desc" || this.sortBy === "price-asc") {
       const dir2 = this.sortBy === "price-desc" ? -1 : 1;
-      return [...cards].sort((a, b) => {
+      paint([...filtered].sort((a, b) => {
         var _a, _b;
         const pa = (_a = this.cardPrice(a)) != null ? _a : -1;
         const pb = (_b = this.cardPrice(b)) != null ? _b : -1;
         return (pa - pb) * dir2;
-      });
+      }));
+      return;
     }
-    const uniqueSets = [...new Set(cards.map((c) => c.set.toLowerCase()))];
+    const uniqueSets = [...new Set(filtered.map((c) => c.set.toLowerCase()))];
     const missing = uniqueSets.filter((s) => !getSetDate(s));
-    await Promise.all(missing.map((s) => fetchSetReleasedAt(s)));
     const dir = this.sortBy === "release-desc" ? -1 : 1;
-    return [...cards].sort((a, b) => {
+    const finish = (cards) => paint([...cards].sort((a, b) => {
       var _a, _b;
       const da = (_a = getSetDate(a.set)) != null ? _a : "0000-00-00";
       const db = (_b = getSetDate(b.set)) != null ? _b : "0000-00-00";
       if (da !== db) return da < db ? -dir : dir;
       return parseInt(a.number) - parseInt(b.number) || a.number.localeCompare(b.number);
-    });
+    }));
+    if (missing.length === 0) {
+      finish(filtered);
+    } else {
+      Promise.all(missing.map((s) => fetchSetReleasedAt(s))).then(() => finish(filtered));
+    }
   }
   renderCardTile(grid, card, coll) {
     var _a, _b, _c;
