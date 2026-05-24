@@ -22,7 +22,7 @@ __export(main_exports, {
   default: () => CollectorsPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // src/DashboardView.ts
 var import_obsidian5 = require("obsidian");
@@ -271,21 +271,19 @@ async function fetchSearchCards(query, onPage, order = "released") {
     onPage
   );
 }
-var priceCache = /* @__PURE__ */ new Map();
-function getCardPrice(set, number, isFoil) {
-  const key = `${set.toLowerCase()}#${number}`;
-  if (!priceCache.has(key)) return void 0;
-  const entry = priceCache.get(key);
-  return isFoil ? entry.usd_foil : entry.usd;
+var scryfallCache = /* @__PURE__ */ new Map();
+function getScryfallData(set, number) {
+  return scryfallCache.get(`${set.toLowerCase()}#${number}`);
 }
-function isPriceCached(set, number) {
-  return priceCache.has(`${set.toLowerCase()}#${number}`);
+function isScryfallCached(set, number) {
+  return scryfallCache.has(`${set.toLowerCase()}#${number}`);
 }
-async function fetchCardPrices(identifiers) {
+async function fetchScryfallData(identifiers) {
+  var _a, _b;
   const seen = /* @__PURE__ */ new Set();
   const toFetch = identifiers.filter((id) => {
     const key = `${id.set.toLowerCase()}#${id.collector_number}`;
-    if (priceCache.has(key) || seen.has(key)) return false;
+    if (scryfallCache.has(key) || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
@@ -302,9 +300,14 @@ async function fetchCardPrices(identifiers) {
       if (res.status < 200 || res.status >= 300) continue;
       const data = res.json;
       for (const card of data.data) {
-        priceCache.set(`${card.set.toLowerCase()}#${card.collector_number}`, {
-          usd: card.prices.usd != null ? parseFloat(card.prices.usd) : null,
-          usd_foil: card.prices.usd_foil != null ? parseFloat(card.prices.usd_foil) : null
+        const p = card.prices;
+        scryfallCache.set(`${card.set.toLowerCase()}#${card.collector_number}`, {
+          usd: p.usd != null ? parseFloat(p.usd) : null,
+          usd_foil: p.usd_foil != null ? parseFloat(p.usd_foil) : null,
+          eur: p.eur != null ? parseFloat(p.eur) : null,
+          eur_foil: p.eur_foil != null ? parseFloat(p.eur_foil) : null,
+          tcgplayer_id: (_a = card.tcgplayer_id) != null ? _a : null,
+          cardmarket_id: (_b = card.cardmarket_id) != null ? _b : null
         });
       }
     } catch (e) {
@@ -742,15 +745,15 @@ var DashboardView = class extends import_obsidian5.ItemView {
   }
   // ── Price helpers ─────────────────────────────────────────────────────────────
   cardPrice(card) {
-    return getCardPrice(card.set.toLowerCase(), card.number, card.id.endsWith("_f"));
+    return this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith("_f"));
   }
   fmt(val) {
-    return `$${val.toFixed(2)}`;
+    return `${this.plugin.priceService.currency()}${val.toFixed(2)}`;
   }
   collValues(cards) {
     let owned = 0, missing = 0, loaded = false;
     for (const card of cards) {
-      if (!isPriceCached(card.set.toLowerCase(), card.number)) continue;
+      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
       loaded = true;
       const p = this.cardPrice(card);
       if (typeof p === "number") {
@@ -764,9 +767,9 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const ids = this.collections.flatMap(
       (c) => c.cards.map((card) => ({ set: card.set.toLowerCase(), collector_number: card.number }))
     );
-    const needed = ids.filter((id) => !isPriceCached(id.set, id.collector_number));
+    const needed = ids.filter((id) => !this.plugin.priceService.isCached(id.set, id.collector_number));
     if (needed.length === 0) return;
-    await fetchCardPrices(ids);
+    await this.plugin.priceService.fetchPrices(ids);
     this.render();
   }
   // ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -853,7 +856,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const totalCards = this.collections.reduce((s, c) => s + c.total, 0);
     let totalInvested = 0, totalMissing = 0, pricesLoaded = false;
     for (const card of allCards) {
-      if (!isPriceCached(card.set.toLowerCase(), card.number)) continue;
+      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
       pricesLoaded = true;
       const p = this.cardPrice(card);
       if (typeof p === "number") {
@@ -864,7 +867,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const hero = root.createDiv({ cls: "col-hero" });
     this.statBox(hero, String(this.collections.length), "Collections", "");
     this.statBox(hero, `${totalOwned} / ${totalCards}`, "Cards owned", "col-hero-owned");
-    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : "\u2026", "Invested", "col-hero-money");
+    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : "\u2026", `Invested \xB7 ${this.plugin.priceService.sourceLabel()}`, "col-hero-money");
     this.statBox(hero, pricesLoaded ? this.fmt(totalMissing) : "\u2026", "To complete", "col-hero-missing");
   }
   statBox(container, value, label, mod) {
@@ -874,7 +877,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
   }
   renderCollectionCard(container, coll) {
     var _a, _b;
-    const pct = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
+    const pct2 = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
     const missing = coll.total - coll.owned;
     const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll.cards);
     const card = container.createDiv({ cls: "col-card" });
@@ -899,8 +902,8 @@ var DashboardView = class extends import_obsidian5.ItemView {
     if (coll.setCode) nameRow.createEl("span", { cls: "col-badge", text: coll.setCode });
     const progressWrap = info.createDiv({ cls: "col-progress-wrap" });
     const bar = progressWrap.createDiv({ cls: "col-progress-bar" });
-    bar.createDiv({ cls: "col-progress-fill" }).style.width = `${pct}%`;
-    progressWrap.createEl("span", { cls: "col-pct", text: `${pct}%` });
+    bar.createDiv({ cls: "col-progress-fill" }).style.width = `${pct2}%`;
+    progressWrap.createEl("span", { cls: "col-pct", text: `${pct2}%` });
     const stats = info.createDiv({ cls: "col-stats" });
     stats.createEl("span", { cls: "col-stat-owned", text: `${coll.owned} owned` });
     stats.createEl("span", { cls: "col-dot", text: "\xB7" });
@@ -1019,21 +1022,21 @@ var DashboardView = class extends import_obsidian5.ItemView {
       this.renderCards(grid, coll);
     });
     this.renderCards(grid, coll);
-    const needsFetch = coll.cards.some((c) => !isPriceCached(c.set.toLowerCase(), c.number));
+    const needsFetch = coll.cards.some((c) => !this.plugin.priceService.isCached(c.set.toLowerCase(), c.number));
     if (needsFetch) {
       const ids = coll.cards.map((c) => ({ set: c.set.toLowerCase(), collector_number: c.number }));
-      fetchCardPrices(ids).then(() => this.render());
+      this.plugin.priceService.fetchPrices(ids).then(() => this.render());
     }
   }
   renderDetailHero(root, coll) {
-    const pct = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
+    const pct2 = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
     const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll.cards);
     const hero = root.createDiv({ cls: "col-detail-hero" });
     this.statBox(hero, `${coll.owned} / ${coll.total}`, "Cards owned", "col-hero-owned");
     const progBox = hero.createDiv({ cls: "col-hero-box col-hero-progress" });
     const progWrap = progBox.createDiv({ cls: "col-progress-wrap" });
-    progWrap.createDiv({ cls: "col-progress-bar" }).createDiv({ cls: "col-progress-fill" }).style.width = `${pct}%`;
-    progBox.createEl("span", { cls: "col-hero-value col-hero-pct", text: `${pct}%` });
+    progWrap.createDiv({ cls: "col-progress-bar" }).createDiv({ cls: "col-progress-fill" }).style.width = `${pct2}%`;
+    progBox.createEl("span", { cls: "col-hero-value col-hero-pct", text: `${pct2}%` });
     if (pricesLoaded) {
       this.statBox(hero, this.fmt(ownedVal), "Invested", "col-hero-money");
       this.statBox(hero, this.fmt(missingVal), "To complete", "col-hero-missing");
@@ -1111,8 +1114,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const meta = tileFooter.createDiv({ cls: "col-tile-meta" });
     meta.createEl("span", { cls: `col-rarity col-rarity-${card.rarity}`, text: (_c = (_b = card.rarity[0]) == null ? void 0 : _b.toUpperCase()) != null ? _c : "" });
     meta.createEl("span", { text: `${card.set} #${card.number}` });
-    const isCached = isPriceCached(card.set.toLowerCase(), card.number);
-    if (isCached) {
+    if (this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) {
       const p = this.cardPrice(card);
       const priceText = typeof p === "number" ? this.fmt(p) : "\u2014";
       tileFooter.createEl("span", { cls: "col-tile-price", text: priceText });
@@ -1139,12 +1141,12 @@ var DashboardView = class extends import_obsidian5.ItemView {
   }
   refreshDetailHero(coll) {
     const root = this.containerEl.children[1];
-    const pct = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
+    const pct2 = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
     const { owned: ov, missing: mv } = this.collValues(coll.cards);
     const fill = root.querySelector(".col-progress-fill");
-    if (fill) fill.style.width = `${pct}%`;
+    if (fill) fill.style.width = `${pct2}%`;
     const pctEl = root.querySelector(".col-hero-pct");
-    if (pctEl) pctEl.textContent = `${pct}%`;
+    if (pctEl) pctEl.textContent = `${pct2}%`;
     const heroValues = root.querySelectorAll(".col-hero-value");
     if (heroValues[0]) heroValues[0].textContent = `${coll.owned} / ${coll.total}`;
     if (heroValues[2]) heroValues[2].textContent = this.fmt(ov);
@@ -1201,11 +1203,23 @@ var DashboardView = class extends import_obsidian5.ItemView {
 // src/types.ts
 var DEFAULT_SETTINGS = {
   collectionsFolder: "",
-  autoDetect: true
+  autoDetect: true,
+  priceSource: "scryfall-usd",
+  tcgplayerKey: "",
+  cardmarketAppToken: "",
+  cardmarketAppSecret: "",
+  cardmarketAccessToken: "",
+  cardmarketAccessSecret: ""
 };
 
 // src/settings.ts
 var import_obsidian6 = require("obsidian");
+var PRICE_SOURCE_LABELS = {
+  "scryfall-usd": "Scryfall \u2014 USD (TCGPlayer market)",
+  "scryfall-eur": "Scryfall \u2014 EUR (Cardmarket trend)",
+  "tcgplayer": "TCGPlayer (API key required)",
+  "cardmarket": "Cardmarket (API credentials required)"
+};
 var CollectorsSettingTab = class extends import_obsidian6.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -1215,9 +1229,7 @@ var CollectorsSettingTab = class extends import_obsidian6.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Collectors Settings" });
-    new import_obsidian6.Setting(containerEl).setName("Collections folder").setDesc(
-      'Folder to scan for collection files. Leave empty to scan the entire vault. Example: "004 MTG"'
-    ).addText(
+    new import_obsidian6.Setting(containerEl).setName("Collections folder").setDesc('Folder to scan for collection files. Leave empty to scan the entire vault. Example: "004 MTG"').addText(
       (t) => t.setPlaceholder("e.g. 004 MTG").setValue(this.plugin.settings.collectionsFolder).onChange(async (v) => {
         this.plugin.settings.collectionsFolder = v.trim();
         await this.plugin.saveSettings();
@@ -1229,17 +1241,298 @@ var CollectorsSettingTab = class extends import_obsidian6.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
+    containerEl.createEl("h2", { text: "Price Sources" });
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "Choose where to fetch card prices from. If a provider has no API key configured, Scryfall USD is used as fallback."
+    });
+    const tcgSection = containerEl.createDiv();
+    const cmSection = containerEl.createDiv();
+    const updateVisibility = (source) => {
+      tcgSection.style.display = source === "tcgplayer" ? "" : "none";
+      cmSection.style.display = source === "cardmarket" ? "" : "none";
+    };
+    new import_obsidian6.Setting(containerEl).setName("Price source").setDesc("Active price provider for all collections.").addDropdown((d) => {
+      for (const [val, label] of Object.entries(PRICE_SOURCE_LABELS)) {
+        d.addOption(val, label);
+      }
+      d.setValue(this.plugin.settings.priceSource);
+      updateVisibility(this.plugin.settings.priceSource);
+      d.onChange(async (v) => {
+        this.plugin.settings.priceSource = v;
+        await this.plugin.saveSettings();
+        updateVisibility(v);
+      });
+    });
+    tcgSection.createEl("h3", { text: "TCGPlayer" });
+    tcgSection.createEl("p", {
+      cls: "setting-item-description",
+      text: "Get your public API key at developer.tcgplayer.com. Uses market price (USD)."
+    });
+    new import_obsidian6.Setting(tcgSection).setName("API public key").setDesc("Bearer token for TCGPlayer API v1.39.0.").addText(
+      (t) => t.setPlaceholder("Paste your public key here").setValue(this.plugin.settings.tcgplayerKey).onChange(async (v) => {
+        this.plugin.settings.tcgplayerKey = v.trim();
+        await this.plugin.saveSettings();
+      })
+    );
+    cmSection.createEl("h3", { text: "Cardmarket" });
+    cmSection.createEl("p", {
+      cls: "setting-item-description",
+      text: "Requires OAuth 1.0a credentials from your Cardmarket developer account. Uses TREND price (EUR)."
+    });
+    new import_obsidian6.Setting(cmSection).setName("App token").addText(
+      (t) => t.setPlaceholder("App token").setValue(this.plugin.settings.cardmarketAppToken).onChange(async (v) => {
+        this.plugin.settings.cardmarketAppToken = v.trim();
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(cmSection).setName("App secret").addText(
+      (t) => t.setPlaceholder("App secret").setValue(this.plugin.settings.cardmarketAppSecret).onChange(async (v) => {
+        this.plugin.settings.cardmarketAppSecret = v.trim();
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(cmSection).setName("Access token").addText(
+      (t) => t.setPlaceholder("Access token").setValue(this.plugin.settings.cardmarketAccessToken).onChange(async (v) => {
+        this.plugin.settings.cardmarketAccessToken = v.trim();
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(cmSection).setName("Access token secret").addText(
+      (t) => t.setPlaceholder("Access token secret").setValue(this.plugin.settings.cardmarketAccessSecret).onChange(async (v) => {
+        this.plugin.settings.cardmarketAccessSecret = v.trim();
+        await this.plugin.saveSettings();
+      })
+    );
   }
 };
 
+// src/PriceService.ts
+var import_obsidian7 = require("obsidian");
+var providerCache = /* @__PURE__ */ new Map();
+function cacheKey(set, number) {
+  return `${set.toLowerCase()}#${number}`;
+}
+var PriceService = class {
+  constructor(settings) {
+    this.settings = settings;
+  }
+  updateSettings(settings) {
+    const prevSource = this.effectiveSource();
+    this.settings = settings;
+    if (this.effectiveSource() !== prevSource) {
+      providerCache.clear();
+    }
+  }
+  /** Currency symbol for the active source */
+  currency() {
+    const src = this.effectiveSource();
+    return src === "scryfall-eur" || src === "cardmarket" ? "\u20AC" : "$";
+  }
+  /** Source label for display in UI */
+  sourceLabel() {
+    const labels = {
+      "scryfall-usd": "Scryfall \xB7 USD",
+      "scryfall-eur": "Scryfall \xB7 EUR",
+      "tcgplayer": "TCGPlayer",
+      "cardmarket": "Cardmarket"
+    };
+    return labels[this.effectiveSource()];
+  }
+  /** Whether this card has any price in the cache (provider or Scryfall fallback) */
+  isCached(set, number) {
+    const key = cacheKey(set, number);
+    const src = this.effectiveSource();
+    if (src === "tcgplayer" || src === "cardmarket") {
+      return providerCache.has(key) || isScryfallCached(set, number);
+    }
+    return isScryfallCached(set, number);
+  }
+  /**
+   * Returns price for a card.
+   * - `undefined` → not yet fetched (show "…")
+   * - `null`      → fetched but no price available (show "—")
+   * - `number`    → actual price
+   */
+  getPrice(set, number, isFoil) {
+    const key = cacheKey(set, number);
+    const src = this.effectiveSource();
+    if (src === "tcgplayer" || src === "cardmarket") {
+      if (providerCache.has(key)) {
+        const e = providerCache.get(key);
+        return isFoil ? e.foil : e.normal;
+      }
+      const d2 = getScryfallData(set, number);
+      if (d2) return isFoil ? d2.usd_foil : d2.usd;
+      return void 0;
+    }
+    const d = getScryfallData(set, number);
+    if (!d) return void 0;
+    if (src === "scryfall-eur") return isFoil ? d.eur_foil : d.eur;
+    return isFoil ? d.usd_foil : d.usd;
+  }
+  /**
+   * Fetch prices for a list of cards.
+   * Always calls Scryfall first (for fallback + external IDs), then the provider if configured.
+   */
+  async fetchPrices(identifiers) {
+    await fetchScryfallData(identifiers);
+    const src = this.effectiveSource();
+    if (src === "tcgplayer") {
+      await this.fetchTCGPlayerPrices(identifiers);
+    } else if (src === "cardmarket") {
+      await this.fetchCardmarketPrices(identifiers);
+    }
+  }
+  // ── Effective source (respects fallback rules) ─────────────────────────────
+  effectiveSource() {
+    var _a;
+    const src = (_a = this.settings.priceSource) != null ? _a : "scryfall-usd";
+    if (src === "tcgplayer" && !this.settings.tcgplayerKey) return "scryfall-usd";
+    if (src === "cardmarket" && !this.hasCardmarketCreds()) return "scryfall-usd";
+    return src;
+  }
+  hasCardmarketCreds() {
+    const s = this.settings;
+    return !!(s.cardmarketAppToken && s.cardmarketAppSecret && s.cardmarketAccessToken && s.cardmarketAccessSecret);
+  }
+  // ── TCGPlayer ──────────────────────────────────────────────────────────────
+  async fetchTCGPlayerPrices(identifiers) {
+    const pending = [];
+    for (const id of identifiers) {
+      const key = cacheKey(id.set, id.collector_number);
+      if (providerCache.has(key)) continue;
+      const d = getScryfallData(id.set, id.collector_number);
+      if (d == null ? void 0 : d.tcgplayer_id) pending.push({ key, tcgId: d.tcgplayer_id });
+    }
+    if (pending.length === 0) return;
+    const idToKeys = /* @__PURE__ */ new Map();
+    for (const { key, tcgId } of pending) {
+      if (!idToKeys.has(tcgId)) idToKeys.set(tcgId, []);
+      idToKeys.get(tcgId).push(key);
+    }
+    const uniqueIds = [...idToKeys.keys()];
+    for (let i = 0; i < uniqueIds.length; i += 250) {
+      const batch = uniqueIds.slice(i, i + 250);
+      try {
+        const res = await (0, import_obsidian7.requestUrl)({
+          url: `https://api.tcgplayer.com/v1.39.0/pricing/product/${batch.join(",")}`,
+          headers: {
+            Authorization: `Bearer ${this.settings.tcgplayerKey}`,
+            Accept: "application/json"
+          }
+        });
+        if (res.status < 200 || res.status >= 300) continue;
+        const data = res.json;
+        const priceMap = /* @__PURE__ */ new Map();
+        for (const r of data.results) {
+          if (!priceMap.has(r.productId)) priceMap.set(r.productId, { normal: null, foil: null });
+          const e = priceMap.get(r.productId);
+          if (r.subTypeName === "Foil") e.foil = r.marketPrice;
+          else e.normal = r.marketPrice;
+        }
+        for (const [tcgId, keys] of idToKeys) {
+          const e = priceMap.get(tcgId);
+          if (e) keys.forEach((k) => providerCache.set(k, e));
+        }
+      } catch (e) {
+      }
+    }
+  }
+  // ── Cardmarket (OAuth 1.0a) ────────────────────────────────────────────────
+  async fetchCardmarketPrices(identifiers) {
+    const cmIdToKeys = /* @__PURE__ */ new Map();
+    for (const id of identifiers) {
+      const key = cacheKey(id.set, id.collector_number);
+      if (providerCache.has(key)) continue;
+      const d = getScryfallData(id.set, id.collector_number);
+      if (!(d == null ? void 0 : d.cardmarket_id)) continue;
+      if (!cmIdToKeys.has(d.cardmarket_id)) cmIdToKeys.set(d.cardmarket_id, []);
+      cmIdToKeys.get(d.cardmarket_id).push(key);
+    }
+    if (cmIdToKeys.size === 0) return;
+    const {
+      cardmarketAppToken,
+      cardmarketAppSecret,
+      cardmarketAccessToken,
+      cardmarketAccessSecret
+    } = this.settings;
+    const entries = [...cmIdToKeys.entries()];
+    const CONCURRENCY = 5;
+    for (let i = 0; i < entries.length; i += CONCURRENCY) {
+      const batch = entries.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(async ([cmId, keys]) => {
+        var _a, _b, _c, _d;
+        const url = `https://api.cardmarket.com/ws/v2.0/products/${cmId}`;
+        try {
+          const auth = await buildOAuth1Header(
+            "GET",
+            url,
+            cardmarketAppToken,
+            cardmarketAppSecret,
+            cardmarketAccessToken,
+            cardmarketAccessSecret
+          );
+          const res = await (0, import_obsidian7.requestUrl)({ url, headers: { Authorization: auth, Accept: "application/json" } });
+          if (res.status < 200 || res.status >= 300) return;
+          const data = res.json;
+          const pg = data.product.priceGuide;
+          const entry = {
+            normal: (_b = (_a = pg.TREND) != null ? _a : pg.SELL) != null ? _b : null,
+            foil: (_d = (_c = pg.FOIL_TREND) != null ? _c : pg.FOIL_SELL) != null ? _d : null
+          };
+          keys.forEach((k) => providerCache.set(k, entry));
+        } catch (e) {
+        }
+      }));
+      if (i + CONCURRENCY < entries.length) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    }
+  }
+};
+async function hmacSha1(key, message) {
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(key),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(message));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+function pct(s) {
+  return encodeURIComponent(s).replace(/!/g, "%21").replace(/'/g, "%27").replace(/\(/g, "%28").replace(/\)/g, "%29").replace(/\*/g, "%2A");
+}
+async function buildOAuth1Header(method, url, appToken, appSecret, accessToken, accessSecret) {
+  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16))).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const ts = String(Math.floor(Date.now() / 1e3));
+  const params = [
+    ["oauth_consumer_key", appToken],
+    ["oauth_nonce", nonce],
+    ["oauth_signature_method", "HMAC-SHA1"],
+    ["oauth_timestamp", ts],
+    ["oauth_token", accessToken],
+    ["oauth_version", "1.0"]
+  ];
+  const normParams = [...params].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${pct(k)}=${pct(v)}`).join("&");
+  const base = [method.toUpperCase(), pct(url), pct(normParams)].join("&");
+  const sigKey = `${pct(appSecret)}&${pct(accessSecret)}`;
+  const signature = await hmacSha1(sigKey, base);
+  return "OAuth " + [...params, ["oauth_signature", signature]].map(([k, v]) => `${pct(k)}="${pct(v)}"`).join(", ");
+}
+
 // src/main.ts
-var CollectorsPlugin = class extends import_obsidian7.Plugin {
+var CollectorsPlugin = class extends import_obsidian8.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
   }
   async onload() {
     await this.loadSettings();
+    this.priceService = new PriceService(this.settings);
     this.registerView(DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this));
     this.addRibbonIcon("layout-grid", "Collectors Dashboard", () => this.activateDashboard());
     this.addCommand({
@@ -1262,6 +1555,7 @@ var CollectorsPlugin = class extends import_obsidian7.Plugin {
   }
   async saveSettings() {
     await this.saveData(this.settings);
+    this.priceService.updateSettings(this.settings);
   }
   async activateDashboard() {
     const { workspace } = this.app;
