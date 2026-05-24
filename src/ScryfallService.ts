@@ -136,33 +136,34 @@ export async function fetchSearchCards(
   );
 }
 
-// ── Price cache ──────────────────────────────────────────────────────────────
+// ── Scryfall data cache (prices + external IDs) ───────────────────────────────
 
-export interface CardPrices {
+export interface ScryfallCardData {
   usd: number | null;
   usd_foil: number | null;
+  eur: number | null;
+  eur_foil: number | null;
+  tcgplayer_id: number | null;
+  cardmarket_id: number | null;
 }
 
-const priceCache = new Map<string, CardPrices>();
+const scryfallCache = new Map<string, ScryfallCardData>();
 
-export function getCardPrice(set: string, number: string, isFoil: boolean): number | null | undefined {
-  const key = `${set.toLowerCase()}#${number}`;
-  if (!priceCache.has(key)) return undefined;
-  const entry = priceCache.get(key)!;
-  return isFoil ? entry.usd_foil : entry.usd;
+export function getScryfallData(set: string, number: string): ScryfallCardData | undefined {
+  return scryfallCache.get(`${set.toLowerCase()}#${number}`);
 }
 
-export function isPriceCached(set: string, number: string): boolean {
-  return priceCache.has(`${set.toLowerCase()}#${number}`);
+export function isScryfallCached(set: string, number: string): boolean {
+  return scryfallCache.has(`${set.toLowerCase()}#${number}`);
 }
 
-export async function fetchCardPrices(
+export async function fetchScryfallData(
   identifiers: Array<{ set: string; collector_number: string }>
 ): Promise<void> {
   const seen = new Set<string>();
   const toFetch = identifiers.filter(id => {
     const key = `${id.set.toLowerCase()}#${id.collector_number}`;
-    if (priceCache.has(key) || seen.has(key)) return false;
+    if (scryfallCache.has(key) || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
@@ -182,17 +183,27 @@ export async function fetchCardPrices(
         data: Array<{
           set: string;
           collector_number: string;
-          prices: { usd: string | null; usd_foil: string | null };
+          tcgplayer_id?: number;
+          cardmarket_id?: number;
+          prices: {
+            usd: string | null; usd_foil: string | null;
+            eur: string | null; eur_foil: string | null;
+          };
         }>;
       };
       for (const card of data.data) {
-        priceCache.set(`${card.set.toLowerCase()}#${card.collector_number}`, {
-          usd: card.prices.usd != null ? parseFloat(card.prices.usd) : null,
-          usd_foil: card.prices.usd_foil != null ? parseFloat(card.prices.usd_foil) : null,
+        const p = card.prices;
+        scryfallCache.set(`${card.set.toLowerCase()}#${card.collector_number}`, {
+          usd:           p.usd      != null ? parseFloat(p.usd)      : null,
+          usd_foil:      p.usd_foil != null ? parseFloat(p.usd_foil) : null,
+          eur:           p.eur      != null ? parseFloat(p.eur)      : null,
+          eur_foil:      p.eur_foil != null ? parseFloat(p.eur_foil) : null,
+          tcgplayer_id:  card.tcgplayer_id  ?? null,
+          cardmarket_id: card.cardmarket_id ?? null,
         });
       }
     } catch {
-      // price load is non-critical
+      // non-critical
     }
   }
 }

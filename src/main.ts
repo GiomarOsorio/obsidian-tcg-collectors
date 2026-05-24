@@ -3,12 +3,15 @@ import { DashboardView, DASHBOARD_VIEW_TYPE } from './DashboardView';
 import { NewCollectionModal } from './NewCollectionModal';
 import { CollectorsSettings, DEFAULT_SETTINGS } from './types';
 import { CollectorsSettingTab } from './settings';
+import { PriceService } from './PriceService';
 
 export default class CollectorsPlugin extends Plugin {
   settings: CollectorsSettings = DEFAULT_SETTINGS;
+  priceService!: PriceService;
 
   async onload() {
     await this.loadSettings();
+    this.priceService = new PriceService(this.settings);
 
     this.registerView(DASHBOARD_VIEW_TYPE, leaf => new DashboardView(leaf, this));
 
@@ -39,6 +42,7 @@ export default class CollectorsPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    this.priceService.updateSettings(this.settings);
   }
 
   async activateDashboard() {
