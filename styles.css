@@ -21,6 +21,13 @@
   gap: 10px;
 }
 
+/* List view: title on top, actions below */
+.col-header-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
 .col-header-title {
   display: flex;
   align-items: center;
