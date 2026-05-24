@@ -77,6 +77,7 @@ export class NewCollectionModal extends Modal {
   private name = '';
   private type: CollectionType = 'mtg-set';
   private setCode = '';
+  private finishImport: 'all' | 'foil' | 'nonfoil' = 'all';
   private scryfallQuery = '';
   private scryfallOrder = 'released';
   private autoFetch = true;
@@ -157,6 +158,17 @@ export class NewCollectionModal extends Modal {
           .onChange(v => (this.setCode = v.trim().toLowerCase()))
       );
 
+    const finishSetting = new Setting(el)
+      .setName('Print finish')
+      .setDesc('Which finish to import when auto-fetching cards from this set.')
+      .addDropdown(d => {
+        d.addOption('all',     'All printed cards');
+        d.addOption('nonfoil', 'Non-foil only');
+        d.addOption('foil',    'Foil only');
+        d.setValue(this.finishImport);
+        d.onChange(v => (this.finishImport = v as 'all' | 'foil' | 'nonfoil'));
+      });
+
     const queryWrap = el.createDiv({ cls: 'nm-query-wrap' });
     queryWrap.style.display = 'none';
 
@@ -206,6 +218,7 @@ export class NewCollectionModal extends Modal {
           this.type = v as CollectionType;
           const isSet = this.type === 'mtg-set';
           setCodeSetting.settingEl.style.display = isSet ? '' : 'none';
+          finishSetting.settingEl.style.display   = isSet ? '' : 'none';
           queryWrap.style.display = isSet ? 'none' : '';
           autoUpdateSetting.settingEl.style.display = isSet ? 'none' : '';
         });
@@ -295,7 +308,13 @@ export class NewCollectionModal extends Modal {
             this.scryfallOrder
           );
 
-      const rows = cards.flatMap(cardToMarkdownRows);
+      const finish = this.finishImport;
+      const rows = cards.flatMap(card => {
+        if (finish === 'all') return cardToMarkdownRows(card);
+        const filtered = { ...card, finishes: card.finishes.filter(f => f === finish) };
+        return cardToMarkdownRows(filtered);
+      });
+
       const added = await appendCards(file, rows, this.app.vault);
       new Notice(`Added ${added} cards to "${this.name}".`);
     } catch (e) {
