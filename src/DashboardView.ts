@@ -123,7 +123,7 @@ export class DashboardView extends ItemView {
   }
 
   private render() {
-    const content = this.containerEl.children[1] as HTMLElement;
+    const content = this.contentEl;
     content.empty();
     content.addClass('collectors-root');
 
@@ -558,7 +558,7 @@ export class DashboardView extends ItemView {
   }
 
   private refreshDetailHero(coll: Collection) {
-    const root = this.containerEl.children[1] as HTMLElement;
+    const root = this.contentEl;
     const pct = coll.total > 0 ? Math.round((coll.owned / coll.total) * 100) : 0;
     const { owned: ov, missing: mv } = this.collValues(coll.cards);
 
