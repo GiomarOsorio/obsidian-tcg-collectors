@@ -78,6 +78,7 @@ export class NewCollectionModal extends Modal {
   private type: CollectionType = 'mtg-set';
   private setCode = '';
   private finishImport: 'all' | 'foil' | 'nonfoil' = 'all';
+  private allPrints = true;
   private scryfallQuery = '';
   private scryfallOrder = 'released';
   private autoFetch = true;
@@ -160,14 +161,19 @@ export class NewCollectionModal extends Modal {
 
     const finishSetting = new Setting(el)
       .setName('Print finish')
-      .setDesc('Which finish to import when auto-fetching cards from this set.')
+      .setDesc('Which finish to import from this set.')
       .addDropdown(d => {
-        d.addOption('all',     'All printed cards');
+        d.addOption('all',     'All');
         d.addOption('nonfoil', 'Non-foil only');
         d.addOption('foil',    'Foil only');
         d.setValue(this.finishImport);
         d.onChange(v => (this.finishImport = v as 'all' | 'foil' | 'nonfoil'));
       });
+
+    const allPrintsSetting = new Setting(el)
+      .setName('All printed cards')
+      .setDesc('Include all variants: showcase, borderless, extended art, etc. Turn off to import only the main set list.')
+      .addToggle(t => t.setValue(this.allPrints).onChange(v => (this.allPrints = v)));
 
     const queryWrap = el.createDiv({ cls: 'nm-query-wrap' });
     queryWrap.style.display = 'none';
@@ -217,10 +223,11 @@ export class NewCollectionModal extends Modal {
         d.onChange(v => {
           this.type = v as CollectionType;
           const isSet = this.type === 'mtg-set';
-          setCodeSetting.settingEl.style.display = isSet ? '' : 'none';
-          finishSetting.settingEl.style.display   = isSet ? '' : 'none';
-          queryWrap.style.display = isSet ? 'none' : '';
-          autoUpdateSetting.settingEl.style.display = isSet ? 'none' : '';
+          setCodeSetting.settingEl.style.display    = isSet ? '' : 'none';
+          finishSetting.settingEl.style.display      = isSet ? '' : 'none';
+          allPrintsSetting.settingEl.style.display   = isSet ? '' : 'none';
+          queryWrap.style.display                    = isSet ? 'none' : '';
+          autoUpdateSetting.settingEl.style.display  = isSet ? 'none' : '';
         });
       });
 
@@ -301,7 +308,11 @@ export class NewCollectionModal extends Modal {
     new Notice('Fetching cards from Scryfall...');
     try {
       const cards = isSet
-        ? await fetchSetCards(this.setCode, p => new Notice(`Fetching page ${p}...`))
+        ? await fetchSetCards(
+            this.setCode,
+            p => new Notice(`Fetching page ${p}...`),
+            this.allPrints ? 'prints' : 'cards'
+          )
         : await fetchSearchCards(
             this.scryfallQuery,
             p => new Notice(`Fetching page ${p}...`),

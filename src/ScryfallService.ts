@@ -118,10 +118,11 @@ async function fetchAllPages(
 
 export async function fetchSetCards(
   setCode: string,
-  onPage?: (page: number) => void
+  onPage?: (page: number) => void,
+  unique: 'prints' | 'cards' = 'prints'
 ): Promise<ScryfallCard[]> {
   const q = encodeURIComponent(`e:${setCode.toLowerCase()} order:set`);
-  return fetchAllPages(`${API}/cards/search?q=${q}&unique=prints`, onPage);
+  return fetchAllPages(`${API}/cards/search?q=${q}&unique=${unique}`, onPage);
 }
 
 export async function fetchSearchCards(
