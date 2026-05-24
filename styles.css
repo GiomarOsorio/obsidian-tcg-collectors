@@ -499,7 +499,106 @@
 .col-rarity-rare     { color: #f5c518; }
 .col-rarity-mythic   { color: #ff7b22; }
 
-/* ── New Collection Modal ────────────────────────────────────────────────────── */
+/* ── New Collection Modal — game tabs ────────────────────────────────────────── */
+.ncm-modal .modal-content { padding: 0; overflow: hidden; }
+
+.ncm-title {
+  padding: 20px 20px 0;
+  margin: 0 0 14px;
+  font-size: 1.1em;
+  font-weight: 800;
+}
+
+.ncm-tab-bar {
+  display: flex;
+  gap: 0;
+  padding: 0 20px;
+  border-bottom: 2px solid var(--background-modifier-border);
+  overflow-x: auto;
+}
+
+.ncm-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.ncm-tab:hover { color: var(--text-normal); }
+
+.ncm-tab-icon { font-size: 1em; }
+.ncm-tab-label { font-size: 0.95em; }
+
+/* Per-game active colors */
+.ncm-tab-mtg.ncm-tab-active     { color: #bf9b30; border-bottom-color: #bf9b30; }
+.ncm-tab-pokemon.ncm-tab-active  { color: #FFCB05; border-bottom-color: #FFCB05; }
+.ncm-tab-onepiece.ncm-tab-active { color: #F7941D; border-bottom-color: #F7941D; }
+.ncm-tab-yugioh.ncm-tab-active   { color: #C9A44A; border-bottom-color: #C9A44A; }
+
+.ncm-content {
+  padding: 16px 20px 20px;
+}
+
+/* ── Coming soon screens ──────────────────────────────────────────────────────── */
+.ncm-soon {
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.ncm-soon-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 10px;
+  text-align: center;
+}
+
+.ncm-soon-icon {
+  font-size: 3.2em;
+  line-height: 1;
+  filter: drop-shadow(0 0 12px rgba(255,255,255,0.3));
+}
+
+.ncm-soon-name {
+  margin: 0;
+  font-size: 1.6em;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.ncm-soon-badge {
+  margin: 0;
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 4px 14px;
+}
+
+.ncm-soon-tagline {
+  margin: 0;
+  font-size: 0.8em;
+  color: rgba(255,255,255,0.35);
+  font-style: italic;
+}
+
+/* ── New Collection Modal — MTG form ─────────────────────────────────────────── */
 .nm-query-wrap { margin-bottom: 4px; }
 
 .nm-query-input {
