@@ -384,6 +384,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     this.name = "";
     this.type = "mtg-set";
     this.setCode = "";
+    this.finishImport = "all";
     this.scryfallQuery = "";
     this.scryfallOrder = "released";
     this.autoFetch = true;
@@ -436,6 +437,13 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     const setCodeSetting = new import_obsidian2.Setting(el).setName("Set code").setDesc("Scryfall set code (e.g. blb, tblb). Used to auto-fetch cards.").addText(
       (t) => t.setPlaceholder("e.g. tblb").setValue(this.setCode).onChange((v) => this.setCode = v.trim().toLowerCase())
     );
+    const finishSetting = new import_obsidian2.Setting(el).setName("Print finish").setDesc("Which finish to import when auto-fetching cards from this set.").addDropdown((d) => {
+      d.addOption("all", "All printed cards");
+      d.addOption("nonfoil", "Non-foil only");
+      d.addOption("foil", "Foil only");
+      d.setValue(this.finishImport);
+      d.onChange((v) => this.finishImport = v);
+    });
     const queryWrap = el.createDiv({ cls: "nm-query-wrap" });
     queryWrap.style.display = "none";
     const previewEl = queryWrap.createEl("div", { cls: "nm-query-preview" });
@@ -466,6 +474,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
         this.type = v;
         const isSet = this.type === "mtg-set";
         setCodeSetting.settingEl.style.display = isSet ? "" : "none";
+        finishSetting.settingEl.style.display = isSet ? "" : "none";
         queryWrap.style.display = isSet ? "none" : "";
         autoUpdateSetting.settingEl.style.display = isSet ? "none" : "";
       });
@@ -537,7 +546,12 @@ ${TABLE_HEADERS[this.type]}
         (p) => new import_obsidian2.Notice(`Fetching page ${p}...`),
         this.scryfallOrder
       );
-      const rows = cards.flatMap(cardToMarkdownRows);
+      const finish = this.finishImport;
+      const rows = cards.flatMap((card) => {
+        if (finish === "all") return cardToMarkdownRows(card);
+        const filtered = { ...card, finishes: card.finishes.filter((f) => f === finish) };
+        return cardToMarkdownRows(filtered);
+      });
       const added = await appendCards(file, rows, this.app.vault);
       new import_obsidian2.Notice(`Added ${added} cards to "${this.name}".`);
     } catch (e) {
