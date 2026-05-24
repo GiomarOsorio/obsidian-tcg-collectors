@@ -806,7 +806,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     return results.filter((c) => c !== null).sort((a, b) => a.name.localeCompare(b.name));
   }
   render() {
-    const content = this.containerEl.children[1];
+    const content = this.contentEl;
     content.empty();
     content.addClass("collectors-root");
     if (this.screen === "detail" && this.selected) {
@@ -1172,7 +1172,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     });
   }
   refreshDetailHero(coll) {
-    const root = this.containerEl.children[1];
+    const root = this.contentEl;
     const pct2 = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
     const { owned: ov, missing: mv } = this.collValues(coll.cards);
     const fill = root.querySelector(".col-progress-fill");
