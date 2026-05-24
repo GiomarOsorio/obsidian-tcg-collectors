@@ -7,7 +7,6 @@ import { CardSearchModal } from './CardSearchModal';
 import {
   fetchSetCards, fetchSearchCards, cardToMarkdownRows,
   getSetDate, fetchSetReleasedAt,
-  getCardPrice, isPriceCached, fetchCardPrices,
 } from './ScryfallService';
 
 export const DASHBOARD_VIEW_TYPE = 'collectors-dashboard';
@@ -50,17 +49,17 @@ export class DashboardView extends ItemView {
   // ── Price helpers ─────────────────────────────────────────────────────────────
 
   private cardPrice(card: CollectionCard): number | null | undefined {
-    return getCardPrice(card.set.toLowerCase(), card.number, card.id.endsWith('_f'));
+    return this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith('_f'));
   }
 
   private fmt(val: number): string {
-    return `$${val.toFixed(2)}`;
+    return `${this.plugin.priceService.currency()}${val.toFixed(2)}`;
   }
 
   private collValues(cards: CollectionCard[]): { owned: number; missing: number; loaded: boolean } {
     let owned = 0, missing = 0, loaded = false;
     for (const card of cards) {
-      if (!isPriceCached(card.set.toLowerCase(), card.number)) continue;
+      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
       loaded = true;
       const p = this.cardPrice(card);
       if (typeof p === 'number') {
@@ -75,9 +74,9 @@ export class DashboardView extends ItemView {
     const ids = this.collections.flatMap(c =>
       c.cards.map(card => ({ set: card.set.toLowerCase(), collector_number: card.number }))
     );
-    const needed = ids.filter(id => !isPriceCached(id.set, id.collector_number));
+    const needed = ids.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
     if (needed.length === 0) return;
-    await fetchCardPrices(ids);
+    await this.plugin.priceService.fetchPrices(ids);
     this.render();
   }
 
@@ -185,7 +184,7 @@ export class DashboardView extends ItemView {
 
     let totalInvested = 0, totalMissing = 0, pricesLoaded = false;
     for (const card of allCards) {
-      if (!isPriceCached(card.set.toLowerCase(), card.number)) continue;
+      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
       pricesLoaded = true;
       const p = this.cardPrice(card);
       if (typeof p === 'number') {
@@ -198,7 +197,7 @@ export class DashboardView extends ItemView {
 
     this.statBox(hero, String(this.collections.length), 'Collections', '');
     this.statBox(hero, `${totalOwned} / ${totalCards}`, 'Cards owned', 'col-hero-owned');
-    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : '…', 'Invested', 'col-hero-money');
+    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : '…', `Invested · ${this.plugin.priceService.sourceLabel()}`, 'col-hero-money');
     this.statBox(hero, pricesLoaded ? this.fmt(totalMissing) : '…', 'To complete', 'col-hero-missing');
   }
 
@@ -383,10 +382,10 @@ export class DashboardView extends ItemView {
     this.renderCards(grid, coll);
 
     // Lazy-load prices for this collection
-    const needsFetch = coll.cards.some(c => !isPriceCached(c.set.toLowerCase(), c.number));
+    const needsFetch = coll.cards.some(c => !this.plugin.priceService.isCached(c.set.toLowerCase(), c.number));
     if (needsFetch) {
       const ids = coll.cards.map(c => ({ set: c.set.toLowerCase(), collector_number: c.number }));
-      fetchCardPrices(ids).then(() => this.render());
+      this.plugin.priceService.fetchPrices(ids).then(() => this.render());
     }
   }
 
@@ -489,8 +488,7 @@ export class DashboardView extends ItemView {
     meta.createEl('span', { text: `${card.set} #${card.number}` });
 
     // Price
-    const isCached = isPriceCached(card.set.toLowerCase(), card.number);
-    if (isCached) {
+    if (this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) {
       const p = this.cardPrice(card);
       const priceText = typeof p === 'number' ? this.fmt(p) : '—';
       tileFooter.createEl('span', { cls: 'col-tile-price', text: priceText });
