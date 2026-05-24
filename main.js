@@ -331,6 +331,37 @@ function cardToMarkdownRows(card) {
 }
 
 // src/NewCollectionModal.ts
+var GAMES = {
+  mtg: {
+    label: "MTG",
+    icon: "\u2726",
+    accent: "#bf9b30",
+    bg: "linear-gradient(135deg, #1a1209 0%, #2e1f0a 100%)",
+    tagline: ""
+  },
+  pokemon: {
+    label: "Pok\xE9mon",
+    icon: "\u26A1",
+    accent: "#FFCB05",
+    bg: "linear-gradient(135deg, #CC0000 0%, #3B4CCA 100%)",
+    tagline: "Gotta catch 'em all"
+  },
+  onepiece: {
+    label: "One Piece",
+    icon: "\u2620",
+    accent: "#F7941D",
+    bg: "linear-gradient(135deg, #0d0d0d 0%, #8B0000 60%, #D62229 100%)",
+    tagline: "I'm gonna be King of the Pirates"
+  },
+  yugioh: {
+    label: "Yu-Gi-Oh!",
+    icon: "\u{1F441}",
+    accent: "#C9A44A",
+    bg: "linear-gradient(135deg, #0a0014 0%, #1a0a2e 60%, #3d1a6e 100%)",
+    tagline: "It's time to duel"
+  }
+};
+var GAME_ORDER = ["mtg", "pokemon", "onepiece", "yugioh"];
 var TYPE_LABELS = {
   "mtg-set": "MTG Set / Product",
   "mtg-theme": "MTG Theme Collection",
@@ -344,6 +375,9 @@ var TABLE_HEADERS = {
 var NewCollectionModal = class extends import_obsidian2.Modal {
   constructor(app, plugin, onCreated) {
     super(app);
+    this.activeGame = "mtg";
+    this.tabEls = /* @__PURE__ */ new Map();
+    // MTG form state
     this.name = "";
     this.type = "mtg-set";
     this.setCode = "";
@@ -356,20 +390,55 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl("h2", { text: "New Collection" });
-    new import_obsidian2.Setting(contentEl).setName("Collection name").setDesc("Display name for this collection").addText(
-      (t) => t.setPlaceholder("e.g. Bloomburrow Token Boosters").onChange((v) => this.name = v.trim())
+    contentEl.addClass("ncm-modal");
+    contentEl.createEl("h2", { cls: "ncm-title", text: "New Collection" });
+    const tabBar = contentEl.createDiv({ cls: "ncm-tab-bar" });
+    for (const game of GAME_ORDER) {
+      const cfg = GAMES[game];
+      const tab = tabBar.createEl("button", {
+        cls: `ncm-tab ncm-tab-${game}${game === this.activeGame ? " ncm-tab-active" : ""}`
+      });
+      tab.createEl("span", { cls: "ncm-tab-icon", text: cfg.icon });
+      tab.createEl("span", { cls: "ncm-tab-label", text: cfg.label });
+      tab.addEventListener("click", () => {
+        var _a;
+        if (this.activeGame === game) return;
+        (_a = this.tabEls.get(this.activeGame)) == null ? void 0 : _a.removeClass("ncm-tab-active");
+        this.activeGame = game;
+        tab.addClass("ncm-tab-active");
+        this.renderGameContent();
+      });
+      this.tabEls.set(game, tab);
+    }
+    this.gameContentEl = contentEl.createDiv({ cls: "ncm-content" });
+    this.renderGameContent();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+  renderGameContent() {
+    this.gameContentEl.empty();
+    this.gameContentEl.className = `ncm-content ncm-content-${this.activeGame}`;
+    if (this.activeGame === "mtg") {
+      this.renderMTGForm(this.gameContentEl);
+    } else {
+      this.renderComingSoon(this.gameContentEl, this.activeGame);
+    }
+  }
+  // ── MTG form ────────────────────────────────────────────────────────────────
+  renderMTGForm(el) {
+    new import_obsidian2.Setting(el).setName("Collection name").setDesc("Display name for this collection").addText(
+      (t) => t.setPlaceholder("e.g. Bloomburrow Token Boosters").setValue(this.name).onChange((v) => this.name = v.trim())
     );
-    let typeDropdown;
-    const setCodeSetting = new import_obsidian2.Setting(contentEl).setName("Set code").setDesc("Scryfall set code (e.g. blb, tblb). Used to auto-fetch cards.").addText(
-      (t) => t.setPlaceholder("e.g. tblb").onChange((v) => this.setCode = v.trim().toLowerCase())
+    const setCodeSetting = new import_obsidian2.Setting(el).setName("Set code").setDesc("Scryfall set code (e.g. blb, tblb). Used to auto-fetch cards.").addText(
+      (t) => t.setPlaceholder("e.g. tblb").setValue(this.setCode).onChange((v) => this.setCode = v.trim().toLowerCase())
     );
-    const queryWrap = contentEl.createDiv({ cls: "nm-query-wrap" });
+    const queryWrap = el.createDiv({ cls: "nm-query-wrap" });
     queryWrap.style.display = "none";
+    const previewEl = queryWrap.createEl("div", { cls: "nm-query-preview" });
+    previewEl.style.display = "none";
     new import_obsidian2.Setting(queryWrap).setName("Scryfall query or URL").setDesc("Paste a Scryfall search URL or type a query directly. Add game:paper to exclude digital-only cards.").addTextArea((t) => {
-      t.setPlaceholder(
-        "Query: type:turtle game:paper\n\nURL: https://scryfall.com/search?q=type%3Aturtle..."
-      );
+      t.setPlaceholder("Query: type:turtle game:paper\n\nURL: https://scryfall.com/search?q=...");
       t.inputEl.rows = 3;
       t.inputEl.addClass("nm-query-input");
       t.onChange((raw) => {
@@ -381,13 +450,11 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
         previewEl.style.display = parsed.query ? "" : "none";
       });
     });
-    const previewEl = queryWrap.createEl("div", { cls: "nm-query-preview" });
-    previewEl.style.display = "none";
-    const querySetting = { settingEl: queryWrap };
-    const autoFetchSetting = new import_obsidian2.Setting(contentEl).setName("Auto-fetch cards from Scryfall").setDesc("Populate collection with cards from Scryfall after creation.").addToggle((t) => t.setValue(true).onChange((v) => this.autoFetch = v));
-    const autoUpdateSetting = new import_obsidian2.Setting(contentEl).setName("Auto-update").setDesc("Check for new cards on Scryfall every time the dashboard opens. Ideal for theme collections (e.g. t:turtle) that grow over time.").addToggle((t) => t.setValue(false).onChange((v) => this.autoUpdate = v));
+    queryWrap.appendChild(previewEl);
+    const autoFetchSetting = new import_obsidian2.Setting(el).setName("Auto-fetch cards from Scryfall").setDesc("Populate collection with cards from Scryfall after creation.").addToggle((t) => t.setValue(this.autoFetch).onChange((v) => this.autoFetch = v));
+    const autoUpdateSetting = new import_obsidian2.Setting(el).setName("Auto-update").setDesc("Check for new cards on Scryfall every time the dashboard opens. Ideal for theme collections.").addToggle((t) => t.setValue(this.autoUpdate).onChange((v) => this.autoUpdate = v));
     autoUpdateSetting.settingEl.style.display = "none";
-    new import_obsidian2.Setting(contentEl).setName("Type").addDropdown((d) => {
+    new import_obsidian2.Setting(el).setName("Type").addDropdown((d) => {
       for (const [val, label] of Object.entries(TYPE_LABELS)) {
         d.addOption(val, label);
       }
@@ -396,23 +463,26 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
         this.type = v;
         const isSet = this.type === "mtg-set";
         setCodeSetting.settingEl.style.display = isSet ? "" : "none";
-        querySetting.settingEl.style.display = isSet ? "none" : "";
+        queryWrap.style.display = isSet ? "none" : "";
         autoUpdateSetting.settingEl.style.display = isSet ? "none" : "";
       });
     });
-    new import_obsidian2.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Create").setCta().onClick(() => this.create())
-    ).addButton(
-      (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
-    );
+    new import_obsidian2.Setting(el).addButton((btn) => btn.setButtonText("Create").setCta().onClick(() => this.create())).addButton((btn) => btn.setButtonText("Cancel").onClick(() => this.close()));
   }
-  onClose() {
-    this.contentEl.empty();
+  // ── Coming soon ─────────────────────────────────────────────────────────────
+  renderComingSoon(el, game) {
+    const cfg = GAMES[game];
+    const screen = el.createDiv({ cls: `ncm-soon ncm-soon-${game}` });
+    screen.style.background = cfg.bg;
+    const inner = screen.createDiv({ cls: "ncm-soon-inner" });
+    inner.createEl("div", { cls: "ncm-soon-icon", text: cfg.icon });
+    inner.createEl("h3", { cls: "ncm-soon-name", text: cfg.label }).style.color = cfg.accent;
+    inner.createEl("p", { cls: "ncm-soon-badge", text: "Coming soon \xB7 Pr\xF3ximamente" });
+    if (cfg.tagline) {
+      inner.createEl("p", { cls: "ncm-soon-tagline", text: `"${cfg.tagline}"` });
+    }
   }
-  addTypeDropdown(_) {
-    return _;
-  }
-  // unused stub
+  // ── Create ──────────────────────────────────────────────────────────────────
   async create() {
     if (!this.name) {
       new import_obsidian2.Notice("Collection name is required.");
