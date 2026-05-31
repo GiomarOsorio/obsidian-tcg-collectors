@@ -1199,10 +1199,6 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const isFoil = card.id.endsWith("_f");
     const tileCls = ["col-tile", card.owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
     const tile = grid.createDiv({ cls: tileCls });
-    const ownedBadge = tile.createDiv({
-      cls: `col-owned-badge ${card.owned ? "col-owned-badge-yes" : "col-owned-badge-no"}`,
-      text: card.owned ? "\u2713" : "\u2717"
-    });
     if (isFoil) {
       tile.createDiv({ cls: "col-foil-badge", text: "F" });
     }
@@ -1247,8 +1243,6 @@ var DashboardView = class extends import_obsidian5.ItemView {
       coll.owned = coll.cards.filter((c) => c.owned).length;
       countEl.textContent = `\xD7${newCount}`;
       countEl.className = `col-tile-count${newCount > 0 ? " col-tile-count-owned" : ""}`;
-      ownedBadge.className = `col-owned-badge ${newCount > 0 ? "col-owned-badge-yes" : "col-owned-badge-no"}`;
-      ownedBadge.textContent = newCount > 0 ? "\u2713" : "\u2717";
       tile.toggleClass("col-tile-owned", newCount > 0);
       this.refreshDetailHero(coll);
     };
@@ -1726,10 +1720,6 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
       let owned = count > 0;
       const tileCls = ["col-tile", owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
       const tile = grid.createDiv({ cls: tileCls });
-      const ownedBadge = tile.createDiv({
-        cls: `col-owned-badge ${owned ? "col-owned-badge-yes" : "col-owned-badge-no"}`,
-        text: owned ? "\u2713" : "\u2717"
-      });
       if (isFoil) {
         tile.createDiv({ cls: "col-foil-badge", text: "F" });
       }
@@ -1766,8 +1756,6 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
         await setCardCount(file, id, count, this.app.vault);
         countEl.textContent = `\xD7${count}`;
         countEl.className = `col-tile-count${count > 0 ? " col-tile-count-owned" : ""}`;
-        ownedBadge.className = `col-owned-badge ${owned ? "col-owned-badge-yes" : "col-owned-badge-no"}`;
-        ownedBadge.textContent = owned ? "\u2713" : "\u2717";
         tile.toggleClass("col-tile-owned", owned);
       };
       const removeBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-remove", attr: { title: "Remove one copy" } });

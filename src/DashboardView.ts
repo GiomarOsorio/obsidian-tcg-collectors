@@ -515,12 +515,6 @@ export class DashboardView extends ItemView {
     const tileCls = ['col-tile', card.owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
     const tile = grid.createDiv({ cls: tileCls });
 
-    // Owned badge — top-left
-    const ownedBadge = tile.createDiv({
-      cls: `col-owned-badge ${card.owned ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`,
-      text: card.owned ? '✓' : '✗',
-    });
-
     // Foil badge — top-right
     if (isFoil) {
       tile.createDiv({ cls: 'col-foil-badge', text: 'F' });
@@ -572,8 +566,6 @@ export class DashboardView extends ItemView {
       coll.owned = coll.cards.filter(c => c.owned).length;
       countEl.textContent = `×${newCount}`;
       countEl.className = `col-tile-count${newCount > 0 ? ' col-tile-count-owned' : ''}`;
-      ownedBadge.className = `col-owned-badge ${newCount > 0 ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`;
-      ownedBadge.textContent = newCount > 0 ? '✓' : '✗';
       tile.toggleClass('col-tile-owned', newCount > 0);
       this.refreshDetailHero(coll);
     };
