@@ -1,18 +1,19 @@
 import { ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import type CollectorsPlugin from './main';
 import { Collection, CollectionCard, CollectionType, SortBy } from './types';
-import { parseCollectionFile, toggleCardOwned, appendCards } from './parser';
+import { parseCollectionFile, setCardCount, appendCards, patchFrontmatter } from './parser';
+import { migrateCollection } from './migrations';
 import { NewCollectionModal } from './NewCollectionModal';
 import { CardSearchModal } from './CardSearchModal';
 import {
   fetchSetCards, fetchSearchCards, cardToMarkdownRows,
   getSetDate, fetchSetReleasedAt,
-  getCardPrice, isPriceCached, fetchCardPrices,
 } from './ScryfallService';
 
 export const DASHBOARD_VIEW_TYPE = 'collectors-dashboard';
 
 type Filter = 'all' | 'owned' | 'missing';
+type FinishFilter = 'all' | 'foil' | 'nonfoil';
 type Screen = 'list' | 'detail';
 
 export class DashboardView extends ItemView {
@@ -21,8 +22,10 @@ export class DashboardView extends ItemView {
   private screen: Screen = 'list';
   private selected: Collection | null = null;
   private filter: Filter = 'all';
+  private finishFilter: FinishFilter = 'all';
   private sortBy: SortBy = 'number';
   private searchQuery = '';
+  private saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(leaf: WorkspaceLeaf, plugin: CollectorsPlugin) {
     super(leaf);
@@ -43,24 +46,36 @@ export class DashboardView extends ItemView {
       if (!this.selected) this.screen = 'list';
     }
     this.render();
+    // Run migrations and auto-updates after render so the UI isn't blocked
+    this.runMigrations();
     this.runAutoUpdates();
     this.prefetchAllPrices();
+  }
+
+  private runMigrations() {
+    const currentVersion = this.plugin.manifest.version;
+    for (const coll of this.collections) {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (file instanceof TFile) {
+        migrateCollection(file, coll.pluginVersion, currentVersion, this.app.vault);
+      }
+    }
   }
 
   // ── Price helpers ─────────────────────────────────────────────────────────────
 
   private cardPrice(card: CollectionCard): number | null | undefined {
-    return getCardPrice(card.set.toLowerCase(), card.number, card.id.endsWith('_f'));
+    return this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith('_f'));
   }
 
   private fmt(val: number): string {
-    return `$${val.toFixed(2)}`;
+    return `${this.plugin.priceService.currency()}${val.toFixed(2)}`;
   }
 
   private collValues(cards: CollectionCard[]): { owned: number; missing: number; loaded: boolean } {
     let owned = 0, missing = 0, loaded = false;
     for (const card of cards) {
-      if (!isPriceCached(card.set.toLowerCase(), card.number)) continue;
+      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
       loaded = true;
       const p = this.cardPrice(card);
       if (typeof p === 'number') {
@@ -75,9 +90,9 @@ export class DashboardView extends ItemView {
     const ids = this.collections.flatMap(c =>
       c.cards.map(card => ({ set: card.set.toLowerCase(), collector_number: card.number }))
     );
-    const needed = ids.filter(id => !isPriceCached(id.set, id.collector_number));
+    const needed = ids.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
     if (needed.length === 0) return;
-    await fetchCardPrices(ids);
+    await this.plugin.priceService.fetchPrices(ids);
     this.render();
   }
 
@@ -122,7 +137,7 @@ export class DashboardView extends ItemView {
   }
 
   private render() {
-    const content = this.containerEl.children[1] as HTMLElement;
+    const content = this.contentEl;
     content.empty();
     content.addClass('collectors-root');
 
@@ -136,7 +151,7 @@ export class DashboardView extends ItemView {
   // ── List screen ───────────────────────────────────────────────────────────────
 
   private renderList(root: HTMLElement) {
-    const header = root.createDiv({ cls: 'col-header' });
+    const header = root.createDiv({ cls: 'col-header col-header-stack' });
     header.createEl('h2', { text: 'Collectors', cls: 'col-title' });
 
     const actions = header.createDiv({ cls: 'col-actions' });
@@ -144,7 +159,7 @@ export class DashboardView extends ItemView {
     refreshBtn.innerHTML = '↻';
     refreshBtn.addEventListener('click', () => this.refresh());
 
-    const newBtn = actions.createEl('button', { cls: 'col-btn', text: '+ New' });
+    const newBtn = actions.createEl('button', { cls: 'col-btn', text: '+ New Collection' });
     newBtn.addEventListener('click', () =>
       new NewCollectionModal(this.app, this.plugin, () => this.refresh()).open()
     );
@@ -185,7 +200,7 @@ export class DashboardView extends ItemView {
 
     let totalInvested = 0, totalMissing = 0, pricesLoaded = false;
     for (const card of allCards) {
-      if (!isPriceCached(card.set.toLowerCase(), card.number)) continue;
+      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
       pricesLoaded = true;
       const p = this.cardPrice(card);
       if (typeof p === 'number') {
@@ -198,7 +213,7 @@ export class DashboardView extends ItemView {
 
     this.statBox(hero, String(this.collections.length), 'Collections', '');
     this.statBox(hero, `${totalOwned} / ${totalCards}`, 'Cards owned', 'col-hero-owned');
-    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : '…', 'Invested', 'col-hero-money');
+    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : '…', `Invested · ${this.plugin.priceService.sourceLabel()}`, 'col-hero-money');
     this.statBox(hero, pricesLoaded ? this.fmt(totalMissing) : '…', 'To complete', 'col-hero-missing');
   }
 
@@ -265,6 +280,7 @@ export class DashboardView extends ItemView {
       this.selected = coll;
       this.screen = 'detail';
       this.filter = 'all';
+      this.finishFilter = 'all';
       this.searchQuery = '';
       this.render();
     });
@@ -327,7 +343,7 @@ export class DashboardView extends ItemView {
     // Detail hero stats
     this.renderDetailHero(root, coll);
 
-    // Controls
+    // ── Controls ──────────────────────────────────────────────────────────────
     const controls = root.createDiv({ cls: 'col-controls' });
     const searchInput = controls.createEl('input', {
       cls: 'col-search',
@@ -336,9 +352,57 @@ export class DashboardView extends ItemView {
 
     const row2 = controls.createDiv({ cls: 'col-controls-row' });
 
+    // Owned/missing filter tabs
     const tabs = row2.createDiv({ cls: 'col-tabs' });
     const filterValues: Filter[] = ['all', 'owned', 'missing'];
     const tabLabels: Record<Filter, string> = { all: 'All', owned: 'Owned', missing: 'Missing' };
+
+    // Foil filter checkboxes — only show if collection has both finishes
+    const hasFoil    = coll.cards.some(c => c.id.endsWith('_f'));
+    const hasNonFoil = coll.cards.some(c => c.id.endsWith('_n'));
+    if (hasFoil && hasNonFoil) {
+      const finishWrap = row2.createDiv({ cls: 'col-finish-wrap' });
+      const finishOptions: Array<{ value: FinishFilter; label: string }> = [
+        { value: 'foil',    label: '✦ Foil' },
+        { value: 'nonfoil', label: '◇ Normal' },
+      ];
+      for (const fo of finishOptions) {
+        const lbl = finishWrap.createEl('label', { cls: 'col-finish-label' });
+        const cb = lbl.createEl('input', { attr: { type: 'checkbox' } });
+        (cb as HTMLInputElement).checked = (this.finishFilter === fo.value || this.finishFilter === 'all');
+        lbl.createEl('span', { text: fo.label });
+        cb.addEventListener('change', () => {
+          const inputs = finishWrap.querySelectorAll('input');
+          const foilChecked   = (inputs[0] as HTMLInputElement).checked;
+          const normalChecked = (inputs[1] as HTMLInputElement).checked;
+          if (foilChecked && normalChecked) this.finishFilter = 'all';
+          else if (foilChecked)             this.finishFilter = 'foil';
+          else if (normalChecked)           this.finishFilter = 'nonfoil';
+          else                              this.finishFilter = 'all';
+          this.renderCards(grid, coll);
+        });
+      }
+    }
+
+    // Sort select
+    const sortWrap = row2.createDiv({ cls: 'col-sort-wrap' });
+    sortWrap.createEl('span', { cls: 'col-sort-label', text: 'Sort:' });
+    const sortSelect = sortWrap.createEl('select', { cls: 'col-sort-select' });
+    const sortOptions: Array<{ value: SortBy; label: string }> = [
+      { value: 'number',       label: 'Number' },
+      { value: 'name',         label: 'Name' },
+      { value: 'price-desc',   label: 'Price ↓' },
+      { value: 'price-asc',    label: 'Price ↑' },
+      { value: 'release-desc', label: 'Newest first' },
+      { value: 'release-asc',  label: 'Oldest first' },
+    ];
+    for (const opt of sortOptions) {
+      const o = sortSelect.createEl('option', { attr: { value: opt.value }, text: opt.label });
+      if (opt.value === this.sortBy) o.selected = true;
+    }
+
+    // Grid — declared BEFORE event listeners that reference it
+    const grid = root.createDiv({ cls: 'col-card-grid' });
 
     for (const f of filterValues) {
       const tab = tabs.createEl('button', {
@@ -353,27 +417,10 @@ export class DashboardView extends ItemView {
       });
     }
 
-    const sortWrap = row2.createDiv({ cls: 'col-sort-wrap' });
-    sortWrap.createEl('span', { cls: 'col-sort-label', text: 'Sort:' });
-    const sortSelect = sortWrap.createEl('select', { cls: 'col-sort-select' });
-    const sortOptions: Array<{ value: SortBy; label: string }> = [
-      { value: 'number', label: 'Number' },
-      { value: 'name', label: 'Name' },
-      { value: 'price-desc', label: 'Price ↓' },
-      { value: 'price-asc', label: 'Price ↑' },
-      { value: 'release-desc', label: 'Newest first' },
-      { value: 'release-asc', label: 'Oldest first' },
-    ];
-    for (const opt of sortOptions) {
-      const o = sortSelect.createEl('option', { value: opt.value, text: opt.label });
-      if (opt.value === this.sortBy) o.selected = true;
-    }
     sortSelect.addEventListener('change', () => {
       this.sortBy = sortSelect.value as SortBy;
       this.renderCards(grid, coll);
     });
-
-    const grid = root.createDiv({ cls: 'col-card-grid' });
 
     searchInput.addEventListener('input', () => {
       this.searchQuery = searchInput.value;
@@ -383,10 +430,10 @@ export class DashboardView extends ItemView {
     this.renderCards(grid, coll);
 
     // Lazy-load prices for this collection
-    const needsFetch = coll.cards.some(c => !isPriceCached(c.set.toLowerCase(), c.number));
+    const needsFetch = coll.cards.some(c => !this.plugin.priceService.isCached(c.set.toLowerCase(), c.number));
     if (needsFetch) {
       const ids = coll.cards.map(c => ({ set: c.set.toLowerCase(), collector_number: c.number }));
-      fetchCardPrices(ids).then(() => this.render());
+      this.plugin.priceService.fetchPrices(ids).then(() => this.render());
     }
   }
 
@@ -417,13 +464,17 @@ export class DashboardView extends ItemView {
     const filtered = coll.cards.filter(card => {
       if (this.filter === 'owned' && !card.owned) return false;
       if (this.filter === 'missing' && card.owned) return false;
+      const isFoil = card.id.endsWith('_f');
+      if (this.finishFilter === 'foil' && !isFoil) return false;
+      if (this.finishFilter === 'nonfoil' && isFoil) return false;
       if (this.searchQuery) {
         return card.name.toLowerCase().includes(this.searchQuery.toLowerCase());
       }
       return true;
     });
 
-    this.sortCards(filtered).then(sorted => {
+    const paint = (sorted: CollectionCard[]) => {
+      grid.empty();
       if (sorted.length === 0) {
         grid.createDiv({ cls: 'col-empty', text: 'No cards match this filter.' });
         return;
@@ -431,42 +482,57 @@ export class DashboardView extends ItemView {
       for (const card of sorted) {
         this.renderCardTile(grid, card, coll);
       }
-    });
-  }
+    };
 
-  private async sortCards(cards: CollectionCard[]): Promise<CollectionCard[]> {
+    // Synchronous sorts render immediately — no async race conditions
     if (this.sortBy === 'name') {
-      return [...cards].sort((a, b) => a.name.localeCompare(b.name));
+      paint([...filtered].sort((a, b) => a.name.localeCompare(b.name)));
+      return;
     }
     if (this.sortBy === 'number') {
-      return [...cards].sort((a, b) => {
+      paint([...filtered].sort((a, b) => {
         if (a.set !== b.set) return a.set.localeCompare(b.set);
         return parseInt(a.number) - parseInt(b.number) || a.number.localeCompare(b.number);
-      });
+      }));
+      return;
     }
     if (this.sortBy === 'price-desc' || this.sortBy === 'price-asc') {
       const dir = this.sortBy === 'price-desc' ? -1 : 1;
-      return [...cards].sort((a, b) => {
+      paint([...filtered].sort((a, b) => {
         const pa = this.cardPrice(a) ?? -1;
         const pb = this.cardPrice(b) ?? -1;
         return (pa - pb) * dir;
-      });
+      }));
+      return;
     }
-    const uniqueSets = [...new Set(cards.map(c => c.set.toLowerCase()))];
-    const missing = uniqueSets.filter(s => !getSetDate(s));
-    await Promise.all(missing.map(s => fetchSetReleasedAt(s)));
 
+    // Release sort needs async fetch for set dates
+    const uniqueSets = [...new Set(filtered.map(c => c.set.toLowerCase()))];
+    const missing = uniqueSets.filter(s => !getSetDate(s));
     const dir = this.sortBy === 'release-desc' ? -1 : 1;
-    return [...cards].sort((a, b) => {
+    const finish = (cards: CollectionCard[]) => paint([...cards].sort((a, b) => {
       const da = getSetDate(a.set) ?? '0000-00-00';
       const db = getSetDate(b.set) ?? '0000-00-00';
       if (da !== db) return da < db ? -dir : dir;
       return (parseInt(a.number) - parseInt(b.number)) || a.number.localeCompare(b.number);
-    });
+    }));
+
+    if (missing.length === 0) {
+      finish(filtered);
+    } else {
+      Promise.all(missing.map(s => fetchSetReleasedAt(s))).then(() => finish(filtered));
+    }
   }
 
   private renderCardTile(grid: HTMLElement, card: CollectionCard, coll: Collection) {
-    const tile = grid.createDiv({ cls: `col-tile${card.owned ? ' col-tile-owned' : ''}` });
+    const isFoil = card.id.endsWith('_f');
+    const tileCls = ['col-tile', card.owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
+    const tile = grid.createDiv({ cls: tileCls });
+
+    // Foil badge — top-right
+    if (isFoil) {
+      tile.createDiv({ cls: 'col-foil-badge', text: 'F' });
+    }
 
     if (card.imageUrl) {
       const img = tile.createEl('img', {
@@ -487,38 +553,58 @@ export class DashboardView extends ItemView {
     const meta = tileFooter.createDiv({ cls: 'col-tile-meta' });
     meta.createEl('span', { cls: `col-rarity col-rarity-${card.rarity}`, text: card.rarity[0]?.toUpperCase() ?? '' });
     meta.createEl('span', { text: `${card.set} #${card.number}` });
+    const countEl = meta.createEl('span', {
+      cls: `col-tile-count${card.count > 0 ? ' col-tile-count-owned' : ''}`,
+      text: `×${card.count}`,
+    });
 
-    // Price
-    const isCached = isPriceCached(card.set.toLowerCase(), card.number);
-    if (isCached) {
-      const p = this.cardPrice(card);
-      const priceText = typeof p === 'number' ? this.fmt(p) : '—';
-      tileFooter.createEl('span', { cls: 'col-tile-price', text: priceText });
+    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)
+      ? this.cardPrice(card)
+      : null;
+    const priceEl = tileFooter.createEl('span', { cls: 'col-tile-price' });
+    if (typeof p === 'number') {
+      priceEl.textContent = this.fmt(p);
+    } else {
+      priceEl.textContent = '—';
+      priceEl.addClass('col-tile-price-empty');
     }
 
-    const toggleBtn = tile.createEl('button', {
-      cls: `col-toggle${card.owned ? ' col-toggle-owned' : ''}`,
-      attr: { title: card.owned ? 'Mark as missing' : 'Mark as owned' },
-    });
-    toggleBtn.innerHTML = card.owned ? '✓' : '+';
-    toggleBtn.addEventListener('click', async (e) => {
+    const applyCount = (delta: number, e: MouseEvent) => {
       e.stopPropagation();
-      const file = this.app.vault.getAbstractFileByPath(coll.path);
-      if (!(file instanceof TFile)) return;
-      const newOwned = !card.owned;
-      await toggleCardOwned(file, card.id, newOwned, this.app.vault);
-      card.owned = newOwned;
+      const newCount = Math.max(0, card.count + delta);
+      if (newCount === card.count) return;
+
+      // Update UI immediately — no await
+      card.count = newCount;
+      card.owned = newCount > 0;
       coll.owned = coll.cards.filter(c => c.owned).length;
-      tile.toggleClass('col-tile-owned', newOwned);
-      toggleBtn.toggleClass('col-toggle-owned', newOwned);
-      toggleBtn.innerHTML = newOwned ? '✓' : '+';
-      toggleBtn.setAttribute('title', newOwned ? 'Mark as missing' : 'Mark as owned');
+      countEl.textContent = `×${newCount}`;
+      countEl.className = `col-tile-count${newCount > 0 ? ' col-tile-count-owned' : ''}`;
+      tile.toggleClass('col-tile-owned', newCount > 0);
       this.refreshDetailHero(coll);
-    });
+
+      // Debounce the file write — rapid clicks batch into one save
+      clearTimeout(this.saveTimers.get(card.id));
+      this.saveTimers.set(card.id, setTimeout(async () => {
+        const file = this.app.vault.getAbstractFileByPath(coll.path);
+        if (file instanceof TFile) await setCardCount(file, card.id, card.count, this.app.vault);
+        this.saveTimers.delete(card.id);
+      }, 400));
+    };
+
+    // − bottom-left
+    const removeBtn = tile.createEl('button', { cls: 'col-qty-btn col-qty-remove', attr: { title: 'Remove one copy' } });
+    removeBtn.textContent = '−';
+    removeBtn.addEventListener('click', e => applyCount(-1, e));
+
+    // + bottom-right
+    const addBtn = tile.createEl('button', { cls: 'col-qty-btn col-qty-add', attr: { title: 'Add one copy' } });
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', e => applyCount(+1, e));
   }
 
   private refreshDetailHero(coll: Collection) {
-    const root = this.containerEl.children[1] as HTMLElement;
+    const root = this.contentEl;
     const pct = coll.total > 0 ? Math.round((coll.owned / coll.total) * 100) : 0;
     const { owned: ov, missing: mv } = this.collValues(coll.cards);
 
@@ -539,19 +625,31 @@ export class DashboardView extends ItemView {
   private async updateFromScryfall(coll: Collection, silent = false): Promise<number> {
     if (!silent) new Notice(`Fetching cards for "${coll.name}"...`);
     try {
-      const cards = coll.setCode
-        ? await fetchSetCards(coll.setCode, p => { if (!silent) new Notice(`Fetching page ${p}...`); })
+      const finish = coll.finishImport ?? 'all';
+      const unique  = coll.allPrints === false ? 'cards' : 'prints';
+
+      const rawCards = coll.setCode
+        ? await fetchSetCards(coll.setCode, p => { if (!silent) new Notice(`Fetching page ${p}...`); }, unique)
         : await fetchSearchCards(
             coll.scryfallQuery!,
             p => { if (!silent) new Notice(`Fetching page ${p}...`); },
             coll.scryfallOrder ?? 'released'
           );
 
+      const cards = finish === 'all'
+        ? rawCards
+        : rawCards.map(c => ({ ...c, finishes: c.finishes.filter(f => f === finish) }))
+                  .filter(c => c.finishes.length > 0);
+
       const file = this.app.vault.getAbstractFileByPath(coll.path);
       if (!(file instanceof TFile)) return 0;
 
       const rows = cards.flatMap(cardToMarkdownRows);
       const added = await appendCards(file, rows, this.app.vault);
+
+      const today = new Date().toISOString().slice(0, 10);
+      await patchFrontmatter(file, 'last-fetched', today, this.app.vault);
+
       if (!silent) {
         new Notice(added > 0
           ? `Added ${added} new cards to "${coll.name}".`

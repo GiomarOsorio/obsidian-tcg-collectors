@@ -10,6 +10,8 @@
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  container-type: inline-size;
+  container-name: dashboard;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
@@ -17,6 +19,13 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* List view: title on top, actions below */
+.col-header-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .col-header-title {
@@ -349,6 +358,30 @@
   font-weight: 600;
 }
 
+.col-finish-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.col-finish-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78em;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.col-finish-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--interactive-accent);
+}
+
 .col-sort-wrap {
   display: flex;
   align-items: center;
@@ -385,18 +418,72 @@
   position: relative;
   border-radius: 10px;
   overflow: hidden;
-  border: 2px solid var(--background-modifier-border);
+  border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
-  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.18s ease;
   cursor: default;
 }
-.col-tile:hover {
-  transform: translateY(-3px);
-  border-color: var(--interactive-accent);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
-}
+.col-tile:hover { transform: translateY(-3px) scale(1.05); }
+.col-tile * { cursor: default; }
 .col-tile-owned { border-color: var(--color-green, #4caf50); }
-.col-tile-owned:hover { border-color: var(--color-green, #4caf50); }
+
+
+/* ── Foil shimmer ──────────────────────────────────────────────────────────────── */
+@keyframes col-foil-shimmer {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.col-tile-foil::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  aspect-ratio: 5/7;
+  background: linear-gradient(
+    115deg,
+    rgba(255, 0,128, 0)    0%,
+    rgba(255, 0,128, 0.22) 10%,
+    rgba(255,180,  0, 0.22) 22%,
+    rgba(255,255,  0, 0.22) 34%,
+    rgba(  0,255,120, 0.22) 46%,
+    rgba(  0,200,255, 0.22) 58%,
+    rgba(120,  0,255, 0.22) 70%,
+    rgba(255,  0,128, 0.22) 82%,
+    rgba(255,  0,128, 0)   100%
+  );
+  background-size: 300% 300%;
+  mix-blend-mode: color-dodge;
+  animation: col-foil-shimmer 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Foil badge ────────────────────────────────────────────────────────────────── */
+.col-foil-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(to bottom, #42A5F5, #1565C0);
+  border: 1.5px solid rgba(255,255,255,0.45);
+  border-radius: 3px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  font-family: monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  pointer-events: none;
+  line-height: 1;
+}
 
 .col-tile-img {
   width: 100%;
@@ -418,7 +505,7 @@
 }
 
 .col-tile-footer {
-  padding: 6px 7px;
+  padding: 6px 7px 30px;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -449,42 +536,48 @@
   color: var(--interactive-accent);
   display: block;
 }
+.col-tile-price-empty {
+  color: var(--text-faint);
+  font-weight: 400;
+}
 
-/* ── Toggle button ─────────────────────────────────────────────────────────────── */
-.col-toggle {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.5);
-  background: rgba(0,0,0,0.45);
-  color: white;
-  font-size: 0.8em;
+.col-tile-count {
+  font-size: 0.65em;
   font-weight: 700;
-  cursor: pointer;
+  color: var(--text-faint);
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--background-modifier-hover);
+  flex-shrink: 0;
+}
+.col-tile-count-owned { color: var(--color-green, #4caf50); }
+
+/* ── Qty buttons (bottom corners) ─────────────────────────────────────────────── */
+.col-qty-btn {
+  position: absolute;
+  bottom: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.4);
+  background: rgba(0,0,0,0.5);
+  color: white;
+  font-size: 1em;
+  font-weight: 700;
+  cursor: pointer !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  z-index: 4;
   line-height: 1;
   padding: 0;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
   backdrop-filter: blur(4px);
 }
-.col-toggle:hover {
-  background: var(--interactive-accent);
-  border-color: var(--interactive-accent);
-  transform: scale(1.15);
-}
-.col-toggle-owned {
-  background: var(--color-green, #4caf50);
-  border-color: var(--color-green, #4caf50);
-}
-.col-toggle-owned:hover {
-  background: var(--color-red, #f44336);
-  border-color: var(--color-red, #f44336);
-}
+.col-qty-add  { right: 5px; }
+.col-qty-remove { left: 5px; }
+.col-qty-add:hover  { background: var(--interactive-accent); border-color: var(--interactive-accent); transform: scale(1.15); }
+.col-qty-remove:hover { background: rgba(239,83,80,0.75); border-color: rgba(239,83,80,0.75); transform: scale(1.15); }
 
 /* ── Rarity colors ─────────────────────────────────────────────────────────────── */
 .col-rarity {
@@ -499,7 +592,106 @@
 .col-rarity-rare     { color: #f5c518; }
 .col-rarity-mythic   { color: #ff7b22; }
 
-/* ── New Collection Modal ────────────────────────────────────────────────────── */
+/* ── New Collection Modal — game tabs ────────────────────────────────────────── */
+.ncm-modal .modal-content { padding: 0; overflow: hidden; }
+
+.ncm-title {
+  padding: 20px 20px 0;
+  margin: 0 0 14px;
+  font-size: 1.1em;
+  font-weight: 800;
+}
+
+.ncm-tab-bar {
+  display: flex;
+  gap: 0;
+  padding: 0 20px;
+  border-bottom: 2px solid var(--background-modifier-border);
+  overflow-x: auto;
+}
+
+.ncm-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.ncm-tab:hover { color: var(--text-normal); }
+
+.ncm-tab-icon { font-size: 1em; }
+.ncm-tab-label { font-size: 0.95em; }
+
+/* Per-game active colors */
+.ncm-tab-mtg.ncm-tab-active     { color: #bf9b30; border-bottom-color: #bf9b30; }
+.ncm-tab-pokemon.ncm-tab-active  { color: #FFCB05; border-bottom-color: #FFCB05; }
+.ncm-tab-onepiece.ncm-tab-active { color: #F7941D; border-bottom-color: #F7941D; }
+.ncm-tab-yugioh.ncm-tab-active   { color: #C9A44A; border-bottom-color: #C9A44A; }
+
+.ncm-content {
+  padding: 16px 20px 20px;
+}
+
+/* ── Coming soon screens ──────────────────────────────────────────────────────── */
+.ncm-soon {
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.ncm-soon-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 10px;
+  text-align: center;
+}
+
+.ncm-soon-icon {
+  font-size: 3.2em;
+  line-height: 1;
+  filter: drop-shadow(0 0 12px rgba(255,255,255,0.3));
+}
+
+.ncm-soon-name {
+  margin: 0;
+  font-size: 1.6em;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.ncm-soon-badge {
+  margin: 0;
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 4px 14px;
+}
+
+.ncm-soon-tagline {
+  margin: 0;
+  font-size: 0.8em;
+  color: rgba(255,255,255,0.35);
+  font-style: italic;
+}
+
+/* ── New Collection Modal — MTG form ─────────────────────────────────────────── */
 .nm-query-wrap { margin-bottom: 4px; }
 
 .nm-query-input {
@@ -628,22 +820,27 @@
 .csm-rarity-rare    { color: #f5c518; }
 .csm-rarity-mythic  { color: #ff7b22; }
 
+/* ── Container queries (panel-width-aware) ───────────────────────────────────── */
+@container dashboard (max-width: 660px) {
+  .col-hero { grid-template-columns: repeat(2, 1fr); }
+  .col-collection-grid { grid-template-columns: 1fr; }
+}
+
+@container dashboard (max-width: 420px) {
+  .col-hero { grid-template-columns: 1fr 1fr; }
+  .col-card-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  .col-controls-row { flex-direction: column; align-items: flex-start; }
+  .col-sort-wrap { margin-left: 0; }
+  .col-finish-wrap { flex-wrap: wrap; }
+}
+
 /* ── Mobile / touch ───────────────────────────────────────────────────────────── */
 @media (pointer: coarse) {
-  .col-toggle {
-    width: 32px;
-    height: 32px;
-    font-size: 1em;
-  }
+  .col-qty-btn { width: 28px; height: 28px; font-size: 1em; }
   .col-btn-icon { padding: 9px 12px; }
   .col-btn { padding: 9px 14px; }
   .col-tab { padding: 9px 14px; }
-  .col-collection-grid { grid-template-columns: 1fr; }
-  .col-hero { grid-template-columns: repeat(2, 1fr); }
-  .col-card-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
 }
 
-@media (max-width: 480px) {
-  .collectors-root { padding: 12px; }
-  .col-hero { grid-template-columns: repeat(2, 1fr); }
-}
+/* ── Collection files: hide Obsidian Properties panel ────────────────────────── */
+.collectors-file .metadata-container { display: none !important; }

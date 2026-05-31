@@ -14,6 +14,10 @@ export async function parseCollectionFile(
   let scryfallQuery: string | undefined;
   let scryfallOrder: string | undefined;
   let autoUpdate = false;
+  let finishImport: 'all' | 'foil' | 'nonfoil' | undefined;
+  let allPrints: boolean | undefined;
+  let lastFetched: string | undefined;
+  let pluginVersion: string | undefined;
   let collectionName = file.basename;
 
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -41,6 +45,18 @@ export async function parseCollectionFile(
         case 'auto-update':
           autoUpdate = val === 'true';
           break;
+        case 'finish-import':
+          finishImport = val as 'all' | 'foil' | 'nonfoil';
+          break;
+        case 'all-prints':
+          allPrints = val === 'true';
+          break;
+        case 'last-fetched':
+          lastFetched = val;
+          break;
+        case 'plugin-version':
+          pluginVersion = val;
+          break;
       }
     }
   }
@@ -58,6 +74,10 @@ export async function parseCollectionFile(
     scryfallQuery,
     scryfallOrder,
     autoUpdate,
+    finishImport,
+    allPrints,
+    lastFetched,
+    pluginVersion,
     cards,
     owned: cards.filter(c => c.owned).length,
     total: cards.length,
@@ -77,6 +97,8 @@ function parseCards(content: string): CollectionCard[] {
     const idMatch = checkboxCell.match(/id="([^"]+)"/);
     const id = idMatch ? idMatch[1] : Math.random().toString(36).slice(2);
     const owned = checkboxCell.includes('checked') && !checkboxCell.includes('unchecked');
+    const countMatch = checkboxCell.match(/data-count="(\d+)"/);
+    const count = countMatch ? parseInt(countMatch[1]) : (owned ? 1 : 0);
 
     const imageMatch = cells[1].match(/!\[.*?\]\((.*?)\)/);
     const imageUrl = imageMatch ? imageMatch[1] : '';
@@ -84,6 +106,7 @@ function parseCards(content: string): CollectionCard[] {
     cards.push({
       id,
       owned,
+      count,
       name: cells[2] || '',
       type: cells[3] || '',
       rarity: cells[4] || '',
@@ -196,6 +219,74 @@ export async function toggleCardOwned(
       );
     }
     break;
+  }
+
+  await vault.modify(file, lines.join('\n'));
+}
+
+export async function setCardCount(
+  file: TFile,
+  cardId: string,
+  count: number,
+  vault: Vault
+): Promise<void> {
+  const content = await vault.read(file);
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].includes(`id="${cardId}"`)) continue;
+
+    let line = lines[i];
+    const owned = count > 0;
+
+    // Sync checked/unchecked
+    if (owned) {
+      line = line.replace(`unchecked id="${cardId}"`, `checked id="${cardId}"`);
+    } else {
+      line = line.replace(`checked id="${cardId}"`, `unchecked id="${cardId}"`);
+    }
+
+    // Store count only when > 1 (1 is implied by checked)
+    if (count > 1) {
+      if (line.includes('data-count="')) {
+        line = line.replace(/data-count="\d+"/, `data-count="${count}"`);
+      } else {
+        line = line.replace(`id="${cardId}"`, `id="${cardId}" data-count="${count}"`);
+      }
+    } else {
+      line = line.replace(/\s*data-count="\d+"/, '');
+    }
+
+    lines[i] = line;
+    break;
+  }
+
+  await vault.modify(file, lines.join('\n'));
+}
+
+/**
+ * Update or insert a single key-value pair in the YAML frontmatter of a file.
+ * If the key exists, its line is replaced. If not, it is inserted before the closing ---.
+ */
+export async function patchFrontmatter(
+  file: TFile,
+  key: string,
+  value: string,
+  vault: Vault
+): Promise<void> {
+  const content = await vault.read(file);
+  const fmEnd = content.indexOf('\n---', 4);
+  if (!content.startsWith('---\n') || fmEnd === -1) return;
+
+  const lines = content.split('\n');
+  const endIdx = lines.findIndex((l, i) => i > 0 && l === '---');
+  if (endIdx === -1) return;
+
+  const existing = lines.findIndex(l => l.trimStart().startsWith(`${key}:`));
+  if (existing !== -1 && existing < endIdx) {
+    lines[existing] = `${key}: ${value}`;
+  } else {
+    lines.splice(endIdx, 0, `${key}: ${value}`);
   }
 
   await vault.modify(file, lines.join('\n'));
