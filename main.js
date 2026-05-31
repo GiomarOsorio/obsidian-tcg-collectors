@@ -1261,6 +1261,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
 var DEFAULT_SETTINGS = {
   collectionsFolder: "",
   autoDetect: true,
+  cardViewInFiles: true,
   priceSource: "scryfall-usd",
   tcgplayerKey: "",
   cardmarketAppToken: "",
@@ -1295,6 +1296,12 @@ var CollectorsSettingTab = class extends import_obsidian6.PluginSettingTab {
     new import_obsidian6.Setting(containerEl).setName("Auto-detect collections").setDesc("Detect collection files by their checkbox table format, not only by frontmatter.").addToggle(
       (t) => t.setValue(this.plugin.settings.autoDetect).onChange(async (v) => {
         this.plugin.settings.autoDetect = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Card view in files").setDesc("Show collection cards as visual tiles in reading mode. Disable to show the raw table.").addToggle(
+      (t) => t.setValue(this.plugin.settings.cardViewInFiles).onChange(async (v) => {
+        this.plugin.settings.cardViewInFiles = v;
         await this.plugin.saveSettings();
       })
     );
@@ -1603,6 +1610,12 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
       callback: () => new NewCollectionModal(this.app, this, () => this.refreshDashboard()).open()
     });
     this.addSettingTab(new CollectorsSettingTab(this.app, this));
+    this.registerMarkdownPostProcessor((element, context) => {
+      if (!this.settings.cardViewInFiles) return;
+      element.querySelectorAll("table").forEach((table) => {
+        this.transformTableToCardView(table, context.sourcePath);
+      });
+    });
   }
   onunload() {
     this.app.workspace.detachLeavesOfType(DASHBOARD_VIEW_TYPE);
@@ -1624,6 +1637,64 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
     const leaf = workspace.getLeaf("tab");
     await leaf.setViewState({ type: DASHBOARD_VIEW_TYPE, active: true });
     workspace.revealLeaf(leaf);
+  }
+  transformTableToCardView(table, sourcePath) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
+    const rows = Array.from(table.querySelectorAll("tbody tr"));
+    if (rows.length === 0) return;
+    const firstCb = rows[0].querySelector('td input[type="checkbox"]');
+    if (!((_a = firstCb == null ? void 0 : firstCb.id) == null ? void 0 : _a.match(/^[a-f0-9]{8}_(f|n)$/))) return;
+    const grid = createDiv({ cls: "col-card-grid" });
+    for (const row of rows) {
+      const cells = row.querySelectorAll("td");
+      if (cells.length < 7) continue;
+      const cb = cells[0].querySelector('input[type="checkbox"]');
+      if (!(cb == null ? void 0 : cb.id)) continue;
+      const imageUrl = (_c = (_b = cells[1].querySelector("img")) == null ? void 0 : _b.getAttribute("src")) != null ? _c : "";
+      const name = (_e = (_d = cells[2].textContent) == null ? void 0 : _d.trim()) != null ? _e : "";
+      const rarity = (_g = (_f = cells[4].textContent) == null ? void 0 : _f.trim().toLowerCase()) != null ? _g : "";
+      const set = (_i = (_h = cells[5].textContent) == null ? void 0 : _h.trim()) != null ? _i : "";
+      const number = (_k = (_j = cells[6].textContent) == null ? void 0 : _j.trim()) != null ? _k : "";
+      const id = cb.id;
+      let owned = cb.checked;
+      const tile = grid.createDiv({ cls: `col-tile${owned ? " col-tile-owned" : ""}` });
+      if (imageUrl.startsWith("https://")) {
+        const img = tile.createEl("img", {
+          cls: "col-tile-img",
+          attr: { src: imageUrl, alt: name, loading: "lazy" }
+        });
+        img.addEventListener("error", () => {
+          var _a2;
+          const fb = createDiv({ cls: "col-tile-img-fallback" });
+          fb.setText((_a2 = name[0]) != null ? _a2 : "?");
+          img.replaceWith(fb);
+        });
+      } else {
+        tile.createDiv({ cls: "col-tile-img-fallback" }).setText((_l = name[0]) != null ? _l : "?");
+      }
+      const footer = tile.createDiv({ cls: "col-tile-footer" });
+      footer.createEl("span", { cls: "col-tile-name", text: name });
+      const meta = footer.createDiv({ cls: "col-tile-meta" });
+      meta.createEl("span", { cls: `col-rarity col-rarity-${rarity}`, text: (_n = (_m = rarity[0]) == null ? void 0 : _m.toUpperCase()) != null ? _n : "" });
+      meta.createEl("span", { text: `${set} #${number}` });
+      const toggleBtn = tile.createEl("button", {
+        cls: `col-toggle${owned ? " col-toggle-owned" : ""}`,
+        attr: { title: owned ? "Mark as missing" : "Mark as owned" }
+      });
+      toggleBtn.innerHTML = owned ? "\u2713" : "+";
+      toggleBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const file = this.app.vault.getAbstractFileByPath(sourcePath);
+        if (!(file instanceof import_obsidian8.TFile)) return;
+        owned = !owned;
+        await toggleCardOwned(file, id, owned, this.app.vault);
+        tile.toggleClass("col-tile-owned", owned);
+        toggleBtn.toggleClass("col-toggle-owned", owned);
+        toggleBtn.innerHTML = owned ? "\u2713" : "+";
+        toggleBtn.setAttribute("title", owned ? "Mark as missing" : "Mark as owned");
+      });
+    }
+    table.replaceWith(grid);
   }
   async refreshDashboard() {
     for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
