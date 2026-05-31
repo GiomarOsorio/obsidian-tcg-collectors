@@ -511,7 +511,13 @@ export class DashboardView extends ItemView {
   }
 
   private renderCardTile(grid: HTMLElement, card: CollectionCard, coll: Collection) {
-    const tile = grid.createDiv({ cls: `col-tile${card.owned ? ' col-tile-owned' : ''}` });
+    const isFoil = card.id.endsWith('_f');
+    const tileCls = ['col-tile', card.owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
+    const tile = grid.createDiv({ cls: tileCls });
+
+    if (isFoil) {
+      tile.createDiv({ cls: 'col-foil-badge', text: 'F' });
+    }
 
     if (card.imageUrl) {
       const img = tile.createEl('img', {

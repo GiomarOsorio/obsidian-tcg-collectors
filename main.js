@@ -1187,7 +1187,12 @@ var DashboardView = class extends import_obsidian5.ItemView {
   }
   renderCardTile(grid, card, coll) {
     var _a, _b, _c;
-    const tile = grid.createDiv({ cls: `col-tile${card.owned ? " col-tile-owned" : ""}` });
+    const isFoil = card.id.endsWith("_f");
+    const tileCls = ["col-tile", card.owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
+    const tile = grid.createDiv({ cls: tileCls });
+    if (isFoil) {
+      tile.createDiv({ cls: "col-foil-badge", text: "F" });
+    }
     if (card.imageUrl) {
       const img = tile.createEl("img", {
         cls: "col-tile-img",
@@ -1692,7 +1697,12 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
       const number = (_k = (_j = cells[6].textContent) == null ? void 0 : _j.trim()) != null ? _k : "";
       const id = cb.id;
       let owned = cb.checked;
-      const tile = grid.createDiv({ cls: `col-tile${owned ? " col-tile-owned" : ""}` });
+      const isFoil = id.endsWith("_f");
+      const tileCls = ["col-tile", owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
+      const tile = grid.createDiv({ cls: tileCls });
+      if (isFoil) {
+        tile.createDiv({ cls: "col-foil-badge", text: "F" });
+      }
       if (imageUrl.startsWith("https://")) {
         const img = tile.createEl("img", {
           cls: "col-tile-img",
