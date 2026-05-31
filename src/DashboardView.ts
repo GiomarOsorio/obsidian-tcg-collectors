@@ -3,6 +3,7 @@ import type CollectorsPlugin from './main';
 import { Collection, CollectionCard, CollectionType, SortBy } from './types';
 import { parseCollectionFile, setCardCount, appendCards, patchFrontmatter } from './parser';
 import { migrateCollection } from './migrations';
+import { openCardZoom } from './CardZoomModal';
 import { NewCollectionModal } from './NewCollectionModal';
 import { CardSearchModal } from './CardSearchModal';
 import {
@@ -543,6 +544,7 @@ export class DashboardView extends ItemView {
         img.style.display = 'none';
         tile.createEl('div', { cls: 'col-tile-img-fallback', text: card.name[0] ?? '?' });
       });
+      tile.addEventListener('click', () => openCardZoom(card.imageUrl, card.name, isFoil));
     } else {
       tile.createDiv({ cls: 'col-tile-img-fallback', text: card.name[0] ?? '?' });
     }

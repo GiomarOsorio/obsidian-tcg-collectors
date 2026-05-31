@@ -5,6 +5,7 @@ import { CollectorsSettings, DEFAULT_SETTINGS } from './types';
 import { CollectorsSettingTab } from './settings';
 import { PriceService } from './PriceService';
 import { setCardCount } from './parser';
+import { openCardZoom } from './CardZoomModal';
 
 export default class CollectorsPlugin extends Plugin {
   settings: CollectorsSettings = DEFAULT_SETTINGS;
@@ -114,6 +115,7 @@ export default class CollectorsPlugin extends Plugin {
           fb.setText(name[0] ?? '?');
           img.replaceWith(fb);
         });
+        tile.addEventListener('click', () => openCardZoom(imageUrl, name, isFoil));
       } else {
         tile.createDiv({ cls: 'col-tile-img-fallback' }).setText(name[0] ?? '?');
       }
