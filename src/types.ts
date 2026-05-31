@@ -1,6 +1,7 @@
 export interface CollectionCard {
   id: string;
   owned: boolean;
+  count: number;
   name: string;
   type: string;
   rarity: string;
@@ -20,6 +21,10 @@ export interface Collection {
   scryfallQuery?: string;
   scryfallOrder?: string;
   autoUpdate: boolean;
+  finishImport?: 'all' | 'foil' | 'nonfoil';
+  allPrints?: boolean;
+  lastFetched?: string;
+  pluginVersion?: string;
   cards: CollectionCard[];
   owned: number;
   total: number;
@@ -27,12 +32,28 @@ export interface Collection {
 
 export type SortBy = 'name' | 'number' | 'release-asc' | 'release-desc' | 'price-asc' | 'price-desc';
 
+export type PriceSource = 'scryfall-usd' | 'scryfall-eur' | 'tcgplayer' | 'cardmarket';
+
 export interface CollectorsSettings {
   collectionsFolder: string;
   autoDetect: boolean;
+  cardViewInFiles: boolean;
+  priceSource: PriceSource;
+  tcgplayerKey: string;
+  cardmarketAppToken: string;
+  cardmarketAppSecret: string;
+  cardmarketAccessToken: string;
+  cardmarketAccessSecret: string;
 }
 
 export const DEFAULT_SETTINGS: CollectorsSettings = {
   collectionsFolder: '',
   autoDetect: true,
+  cardViewInFiles: true,
+  priceSource: 'scryfall-usd',
+  tcgplayerKey: '',
+  cardmarketAppToken: '',
+  cardmarketAppSecret: '',
+  cardmarketAccessToken: '',
+  cardmarketAccessSecret: '',
 };

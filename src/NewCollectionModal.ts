@@ -2,7 +2,50 @@ import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
 import { CollectionType } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
-import { appendCards } from './parser';
+import { appendCards, patchFrontmatter } from './parser';
+
+type TCGGame = 'mtg' | 'pokemon' | 'onepiece' | 'yugioh';
+
+interface GameConfig {
+  label: string;
+  icon: string;
+  accent: string;
+  bg: string;
+  tagline: string;
+}
+
+const GAMES: Record<TCGGame, GameConfig> = {
+  mtg: {
+    label: 'MTG',
+    icon: '✦',
+    accent: '#bf9b30',
+    bg: 'linear-gradient(135deg, #1a1209 0%, #2e1f0a 100%)',
+    tagline: '',
+  },
+  pokemon: {
+    label: 'Pokémon',
+    icon: '⚡',
+    accent: '#FFCB05',
+    bg: 'linear-gradient(135deg, #CC0000 0%, #3B4CCA 100%)',
+    tagline: 'Gotta catch \'em all',
+  },
+  onepiece: {
+    label: 'One Piece',
+    icon: '☠',
+    accent: '#F7941D',
+    bg: 'linear-gradient(135deg, #0d0d0d 0%, #8B0000 60%, #D62229 100%)',
+    tagline: 'I\'m gonna be King of the Pirates',
+  },
+  yugioh: {
+    label: 'Yu-Gi-Oh!',
+    icon: '👁',
+    accent: '#C9A44A',
+    bg: 'linear-gradient(135deg, #0a0014 0%, #1a0a2e 60%, #3d1a6e 100%)',
+    tagline: 'It\'s time to duel',
+  },
+};
+
+const GAME_ORDER: TCGGame[] = ['mtg', 'pokemon', 'onepiece', 'yugioh'];
 
 const TYPE_LABELS: Record<CollectionType, string> = {
   'mtg-set': 'MTG Set / Product',
@@ -26,9 +69,16 @@ export class NewCollectionModal extends Modal {
   plugin: CollectorsPlugin;
   onCreated: () => void;
 
+  private activeGame: TCGGame = 'mtg';
+  private gameContentEl!: HTMLElement;
+  private tabEls: Map<TCGGame, HTMLElement> = new Map();
+
+  // MTG form state
   private name = '';
   private type: CollectionType = 'mtg-set';
   private setCode = '';
+  private finishImport: 'all' | 'foil' | 'nonfoil' = 'all';
+  private allPrints = true;
   private scryfallQuery = '';
   private scryfallOrder = 'released';
   private autoFetch = true;
@@ -42,36 +92,100 @@ export class NewCollectionModal extends Modal {
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl('h2', { text: 'New Collection' });
+    contentEl.addClass('ncm-modal');
 
-    new Setting(contentEl)
+    contentEl.createEl('h2', { cls: 'ncm-title', text: 'New Collection' });
+
+    // ── Game tab bar ───────────────────────────────────────────────────────────
+    const tabBar = contentEl.createDiv({ cls: 'ncm-tab-bar' });
+
+    for (const game of GAME_ORDER) {
+      const cfg = GAMES[game];
+      const tab = tabBar.createEl('button', {
+        cls: `ncm-tab ncm-tab-${game}${game === this.activeGame ? ' ncm-tab-active' : ''}`,
+      });
+      tab.createEl('span', { cls: 'ncm-tab-icon', text: cfg.icon });
+      tab.createEl('span', { cls: 'ncm-tab-label', text: cfg.label });
+
+      tab.addEventListener('click', () => {
+        if (this.activeGame === game) return;
+        this.tabEls.get(this.activeGame)?.removeClass('ncm-tab-active');
+        this.activeGame = game;
+        tab.addClass('ncm-tab-active');
+        this.renderGameContent();
+      });
+
+      this.tabEls.set(game, tab);
+    }
+
+    // ── Content area ───────────────────────────────────────────────────────────
+    this.gameContentEl = contentEl.createDiv({ cls: 'ncm-content' });
+    this.renderGameContent();
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+
+  private renderGameContent() {
+    this.gameContentEl.empty();
+    this.gameContentEl.className = `ncm-content ncm-content-${this.activeGame}`;
+
+    if (this.activeGame === 'mtg') {
+      this.renderMTGForm(this.gameContentEl);
+    } else {
+      this.renderComingSoon(this.gameContentEl, this.activeGame);
+    }
+  }
+
+  // ── MTG form ────────────────────────────────────────────────────────────────
+
+  private renderMTGForm(el: HTMLElement) {
+    new Setting(el)
       .setName('Collection name')
       .setDesc('Display name for this collection')
       .addText(t =>
         t.setPlaceholder('e.g. Bloomburrow Token Boosters')
+          .setValue(this.name)
           .onChange(v => (this.name = v.trim()))
       );
 
-    let typeDropdown: ReturnType<typeof this.addTypeDropdown>;
-
-    const setCodeSetting = new Setting(contentEl)
+    const setCodeSetting = new Setting(el)
       .setName('Set code')
       .setDesc('Scryfall set code (e.g. blb, tblb). Used to auto-fetch cards.')
       .addText(t =>
         t.setPlaceholder('e.g. tblb')
+          .setValue(this.setCode)
           .onChange(v => (this.setCode = v.trim().toLowerCase()))
       );
 
-    const queryWrap = contentEl.createDiv({ cls: 'nm-query-wrap' });
+    const finishSetting = new Setting(el)
+      .setName('Print finish')
+      .setDesc('Which finish to import from this set.')
+      .addDropdown(d => {
+        d.addOption('all',     'All');
+        d.addOption('nonfoil', 'Non-foil only');
+        d.addOption('foil',    'Foil only');
+        d.setValue(this.finishImport);
+        d.onChange(v => (this.finishImport = v as 'all' | 'foil' | 'nonfoil'));
+      });
+
+    const allPrintsSetting = new Setting(el)
+      .setName('All printed cards')
+      .setDesc('Include all variants: showcase, borderless, extended art, etc. Turn off to import only the main set list.')
+      .addToggle(t => t.setValue(this.allPrints).onChange(v => (this.allPrints = v)));
+
+    const queryWrap = el.createDiv({ cls: 'nm-query-wrap' });
     queryWrap.style.display = 'none';
+
+    const previewEl = queryWrap.createEl('div', { cls: 'nm-query-preview' });
+    previewEl.style.display = 'none';
 
     new Setting(queryWrap)
       .setName('Scryfall query or URL')
       .setDesc('Paste a Scryfall search URL or type a query directly. Add game:paper to exclude digital-only cards.')
       .addTextArea(t => {
-        t.setPlaceholder(
-          'Query: type:turtle game:paper\n\nURL: https://scryfall.com/search?q=type%3Aturtle...'
-        );
+        t.setPlaceholder('Query: type:turtle game:paper\n\nURL: https://scryfall.com/search?q=...');
         t.inputEl.rows = 3;
         t.inputEl.addClass('nm-query-input');
         t.onChange(raw => {
@@ -85,24 +199,21 @@ export class NewCollectionModal extends Modal {
         });
       });
 
-    const previewEl = queryWrap.createEl('div', { cls: 'nm-query-preview' });
-    previewEl.style.display = 'none';
+    // move preview below the textarea
+    queryWrap.appendChild(previewEl);
 
-    // expose reference so type-dropdown onChange can show/hide
-    const querySetting = { settingEl: queryWrap };
-
-    const autoFetchSetting = new Setting(contentEl)
+    const autoFetchSetting = new Setting(el)
       .setName('Auto-fetch cards from Scryfall')
       .setDesc('Populate collection with cards from Scryfall after creation.')
-      .addToggle(t => t.setValue(true).onChange(v => (this.autoFetch = v)));
+      .addToggle(t => t.setValue(this.autoFetch).onChange(v => (this.autoFetch = v)));
 
-    const autoUpdateSetting = new Setting(contentEl)
+    const autoUpdateSetting = new Setting(el)
       .setName('Auto-update')
-      .setDesc('Check for new cards on Scryfall every time the dashboard opens. Ideal for theme collections (e.g. t:turtle) that grow over time.')
-      .addToggle(t => t.setValue(false).onChange(v => (this.autoUpdate = v)));
+      .setDesc('Check for new cards on Scryfall every time the dashboard opens. Ideal for theme collections.')
+      .addToggle(t => t.setValue(this.autoUpdate).onChange(v => (this.autoUpdate = v)));
     autoUpdateSetting.settingEl.style.display = 'none';
 
-    new Setting(contentEl)
+    new Setting(el)
       .setName('Type')
       .addDropdown(d => {
         for (const [val, label] of Object.entries(TYPE_LABELS)) {
@@ -112,26 +223,37 @@ export class NewCollectionModal extends Modal {
         d.onChange(v => {
           this.type = v as CollectionType;
           const isSet = this.type === 'mtg-set';
-          setCodeSetting.settingEl.style.display = isSet ? '' : 'none';
-          querySetting.settingEl.style.display = isSet ? 'none' : '';
-          autoUpdateSetting.settingEl.style.display = isSet ? 'none' : '';
+          setCodeSetting.settingEl.style.display    = isSet ? '' : 'none';
+          finishSetting.settingEl.style.display      = isSet ? '' : 'none';
+          allPrintsSetting.settingEl.style.display   = isSet ? '' : 'none';
+          queryWrap.style.display                    = isSet ? 'none' : '';
+          autoUpdateSetting.settingEl.style.display  = isSet ? 'none' : '';
         });
       });
 
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Create').setCta().onClick(() => this.create())
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close())
-      );
+    new Setting(el)
+      .addButton(btn => btn.setButtonText('Create').setCta().onClick(() => this.create()))
+      .addButton(btn => btn.setButtonText('Cancel').onClick(() => this.close()));
   }
 
-  onClose() {
-    this.contentEl.empty();
+  // ── Coming soon ─────────────────────────────────────────────────────────────
+
+  private renderComingSoon(el: HTMLElement, game: TCGGame) {
+    const cfg = GAMES[game];
+
+    const screen = el.createDiv({ cls: `ncm-soon ncm-soon-${game}` });
+    screen.style.background = cfg.bg;
+
+    const inner = screen.createDiv({ cls: 'ncm-soon-inner' });
+    inner.createEl('div', { cls: 'ncm-soon-icon', text: cfg.icon });
+    inner.createEl('h3', { cls: 'ncm-soon-name', text: cfg.label }).style.color = cfg.accent;
+    inner.createEl('p', { cls: 'ncm-soon-badge', text: 'Coming soon · Próximamente' });
+    if (cfg.tagline) {
+      inner.createEl('p', { cls: 'ncm-soon-tagline', text: `"${cfg.tagline}"` });
+    }
   }
 
-  private addTypeDropdown(_: unknown) { return _; } // unused stub
+  // ── Create ──────────────────────────────────────────────────────────────────
 
   private async create() {
     if (!this.name) {
@@ -153,9 +275,13 @@ export class NewCollectionModal extends Modal {
 
     const fmLines = [
       '---',
+      `cssclasses: collectors-file`,
+      `plugin-version: ${this.plugin.manifest.version}`,
       `collection-type: ${this.type}`,
       `collection-name: ${this.name}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : '',
+      isSet ? `finish-import: ${this.finishImport}` : '',
+      isSet ? `all-prints: ${this.allPrints}` : '',
       !isSet && this.scryfallQuery ? `scryfall-query: ${this.scryfallQuery}` : '',
       !isSet && this.scryfallOrder && this.scryfallOrder !== 'released' ? `scryfall-order: ${this.scryfallOrder}` : '',
       this.autoUpdate ? 'auto-update: true' : '',
@@ -186,15 +312,27 @@ export class NewCollectionModal extends Modal {
     new Notice('Fetching cards from Scryfall...');
     try {
       const cards = isSet
-        ? await fetchSetCards(this.setCode, p => new Notice(`Fetching page ${p}...`))
+        ? await fetchSetCards(
+            this.setCode,
+            p => new Notice(`Fetching page ${p}...`),
+            this.allPrints ? 'prints' : 'cards'
+          )
         : await fetchSearchCards(
             this.scryfallQuery,
             p => new Notice(`Fetching page ${p}...`),
             this.scryfallOrder
           );
 
-      const rows = cards.flatMap(cardToMarkdownRows);
+      const finish = this.finishImport;
+      const rows = cards.flatMap(card => {
+        if (finish === 'all') return cardToMarkdownRows(card);
+        const filtered = { ...card, finishes: card.finishes.filter(f => f === finish) };
+        return cardToMarkdownRows(filtered);
+      });
+
       const added = await appendCards(file, rows, this.app.vault);
+      const today = new Date().toISOString().slice(0, 10);
+      await patchFrontmatter(file, 'last-fetched', today, this.app.vault);
       new Notice(`Added ${added} cards to "${this.name}".`);
     } catch (e) {
       new Notice(`Scryfall fetch failed: ${(e as Error).message}`);
