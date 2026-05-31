@@ -785,3 +785,6 @@
   .col-btn { padding: 9px 14px; }
   .col-tab { padding: 9px 14px; }
 }
+
+/* ── Collection files: hide Obsidian Properties panel ────────────────────────── */
+.collectors-file .metadata-container { display: none !important; }
