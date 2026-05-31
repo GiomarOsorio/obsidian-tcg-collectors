@@ -36,6 +36,9 @@ async function parseCollectionFile(file, vault) {
   let scryfallQuery;
   let scryfallOrder;
   let autoUpdate = false;
+  let finishImport;
+  let allPrints;
+  let lastFetched;
   let collectionName = file.basename;
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (fmMatch) {
@@ -62,6 +65,15 @@ async function parseCollectionFile(file, vault) {
         case "auto-update":
           autoUpdate = val === "true";
           break;
+        case "finish-import":
+          finishImport = val;
+          break;
+        case "all-prints":
+          allPrints = val === "true";
+          break;
+        case "last-fetched":
+          lastFetched = val;
+          break;
       }
     }
   }
@@ -76,6 +88,9 @@ async function parseCollectionFile(file, vault) {
     scryfallQuery,
     scryfallOrder,
     autoUpdate,
+    finishImport,
+    allPrints,
+    lastFetched,
     cards,
     owned: cards.filter((c) => c.owned).length,
     total: cards.length
@@ -183,6 +198,21 @@ async function toggleCardOwned(file, cardId, owned, vault) {
       );
     }
     break;
+  }
+  await vault.modify(file, lines.join("\n"));
+}
+async function patchFrontmatter(file, key, value, vault) {
+  const content = await vault.read(file);
+  const fmEnd = content.indexOf("\n---", 4);
+  if (!content.startsWith("---\n") || fmEnd === -1) return;
+  const lines = content.split("\n");
+  const endIdx = lines.findIndex((l, i) => i > 0 && l === "---");
+  if (endIdx === -1) return;
+  const existing = lines.findIndex((l) => l.trimStart().startsWith(`${key}:`));
+  if (existing !== -1 && existing < endIdx) {
+    lines[existing] = `${key}: ${value}`;
+  } else {
+    lines.splice(endIdx, 0, `${key}: ${value}`);
   }
   await vault.modify(file, lines.join("\n"));
 }
@@ -514,9 +544,12 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     const needsFetch = this.autoFetch && (isSet ? !!this.setCode : !!this.scryfallQuery);
     const fmLines = [
       "---",
+      `cssclasses: collectors-file`,
       `collection-type: ${this.type}`,
       `collection-name: ${this.name}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : "",
+      isSet ? `finish-import: ${this.finishImport}` : "",
+      isSet ? `all-prints: ${this.allPrints}` : "",
       !isSet && this.scryfallQuery ? `scryfall-query: ${this.scryfallQuery}` : "",
       !isSet && this.scryfallOrder && this.scryfallOrder !== "released" ? `scryfall-order: ${this.scryfallOrder}` : "",
       this.autoUpdate ? "auto-update: true" : "",
@@ -560,6 +593,8 @@ ${TABLE_HEADERS[this.type]}
         return cardToMarkdownRows(filtered);
       });
       const added = await appendCards(file, rows, this.app.vault);
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      await patchFrontmatter(file, "last-fetched", today, this.app.vault);
       new import_obsidian2.Notice(`Added ${added} cards to "${this.name}".`);
     } catch (e) {
       new import_obsidian2.Notice(`Scryfall fetch failed: ${e.message}`);
