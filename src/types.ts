@@ -20,6 +20,9 @@ export interface Collection {
   scryfallQuery?: string;
   scryfallOrder?: string;
   autoUpdate: boolean;
+  finishImport?: 'all' | 'foil' | 'nonfoil';
+  allPrints?: boolean;
+  lastFetched?: string;
   cards: CollectionCard[];
   owned: number;
   total: number;

@@ -14,6 +14,9 @@ export async function parseCollectionFile(
   let scryfallQuery: string | undefined;
   let scryfallOrder: string | undefined;
   let autoUpdate = false;
+  let finishImport: 'all' | 'foil' | 'nonfoil' | undefined;
+  let allPrints: boolean | undefined;
+  let lastFetched: string | undefined;
   let collectionName = file.basename;
 
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -41,6 +44,15 @@ export async function parseCollectionFile(
         case 'auto-update':
           autoUpdate = val === 'true';
           break;
+        case 'finish-import':
+          finishImport = val as 'all' | 'foil' | 'nonfoil';
+          break;
+        case 'all-prints':
+          allPrints = val === 'true';
+          break;
+        case 'last-fetched':
+          lastFetched = val;
+          break;
       }
     }
   }
@@ -58,6 +70,9 @@ export async function parseCollectionFile(
     scryfallQuery,
     scryfallOrder,
     autoUpdate,
+    finishImport,
+    allPrints,
+    lastFetched,
     cards,
     owned: cards.filter(c => c.owned).length,
     total: cards.length,
@@ -196,6 +211,34 @@ export async function toggleCardOwned(
       );
     }
     break;
+  }
+
+  await vault.modify(file, lines.join('\n'));
+}
+
+/**
+ * Update or insert a single key-value pair in the YAML frontmatter of a file.
+ * If the key exists, its line is replaced. If not, it is inserted before the closing ---.
+ */
+export async function patchFrontmatter(
+  file: TFile,
+  key: string,
+  value: string,
+  vault: Vault
+): Promise<void> {
+  const content = await vault.read(file);
+  const fmEnd = content.indexOf('\n---', 4);
+  if (!content.startsWith('---\n') || fmEnd === -1) return;
+
+  const lines = content.split('\n');
+  const endIdx = lines.findIndex((l, i) => i > 0 && l === '---');
+  if (endIdx === -1) return;
+
+  const existing = lines.findIndex(l => l.trimStart().startsWith(`${key}:`));
+  if (existing !== -1 && existing < endIdx) {
+    lines[existing] = `${key}: ${value}`;
+  } else {
+    lines.splice(endIdx, 0, `${key}: ${value}`);
   }
 
   await vault.modify(file, lines.join('\n'));
