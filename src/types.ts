@@ -24,6 +24,7 @@ export interface Collection {
   finishImport?: 'all' | 'foil' | 'nonfoil';
   allPrints?: boolean;
   lastFetched?: string;
+  pluginVersion?: string;
   cards: CollectionCard[];
   owned: number;
   total: number;
