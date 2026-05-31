@@ -2,6 +2,7 @@ import { ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import type CollectorsPlugin from './main';
 import { Collection, CollectionCard, CollectionType, SortBy } from './types';
 import { parseCollectionFile, setCardCount, appendCards } from './parser';
+import { migrateCollection } from './migrations';
 import { NewCollectionModal } from './NewCollectionModal';
 import { CardSearchModal } from './CardSearchModal';
 import {
@@ -39,6 +40,7 @@ export class DashboardView extends ItemView {
 
   async refresh() {
     this.collections = await this.loadCollections();
+    await this.runMigrations();
     if (this.selected) {
       const updated = this.collections.find(c => c.path === this.selected!.path);
       this.selected = updated ?? null;
@@ -47,6 +49,16 @@ export class DashboardView extends ItemView {
     this.render();
     this.runAutoUpdates();
     this.prefetchAllPrices();
+  }
+
+  private async runMigrations() {
+    const currentVersion = this.plugin.manifest.version;
+    for (const coll of this.collections) {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (file instanceof TFile) {
+        await migrateCollection(file, coll.pluginVersion, currentVersion, this.app.vault);
+      }
+    }
   }
 
   // ── Price helpers ─────────────────────────────────────────────────────────────

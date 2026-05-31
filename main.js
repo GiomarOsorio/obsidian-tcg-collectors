@@ -39,6 +39,7 @@ async function parseCollectionFile(file, vault) {
   let finishImport;
   let allPrints;
   let lastFetched;
+  let pluginVersion;
   let collectionName = file.basename;
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (fmMatch) {
@@ -74,6 +75,9 @@ async function parseCollectionFile(file, vault) {
         case "last-fetched":
           lastFetched = val;
           break;
+        case "plugin-version":
+          pluginVersion = val;
+          break;
       }
     }
   }
@@ -91,6 +95,7 @@ async function parseCollectionFile(file, vault) {
     finishImport,
     allPrints,
     lastFetched,
+    pluginVersion,
     cards,
     owned: cards.filter((c) => c.owned).length,
     total: cards.length
@@ -224,6 +229,46 @@ async function patchFrontmatter(file, key, value, vault) {
     lines.splice(endIdx, 0, `${key}: ${value}`);
   }
   await vault.modify(file, lines.join("\n"));
+}
+
+// src/migrations.ts
+function semverGt(a, b) {
+  var _a, _b;
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = ((_a = pa[i]) != null ? _a : 0) - ((_b = pb[i]) != null ? _b : 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
+var MIGRATIONS = [
+  {
+    // Introduced: cssclasses, finish-import, all-prints
+    toVersion: "0.2.0",
+    run: async (file, content, vault) => {
+      if (!/cssclasses:/.test(content)) {
+        await patchFrontmatter(file, "cssclasses", "collectors-file", vault);
+        content = await vault.read(file);
+      }
+      if (/collection-type:\s*mtg-set/.test(content) && !/finish-import:/.test(content)) {
+        await patchFrontmatter(file, "finish-import", "all", vault);
+        await patchFrontmatter(file, "all-prints", "true", vault);
+      }
+    }
+  }
+];
+async function migrateCollection(file, fileVersion, currentVersion, vault) {
+  if (fileVersion && !semverGt(currentVersion, fileVersion)) return false;
+  const pending = fileVersion ? MIGRATIONS.filter((m) => semverGt(m.toVersion, fileVersion)) : [...MIGRATIONS];
+  if (pending.length === 0) return false;
+  let content = await vault.read(file);
+  for (const m of pending) {
+    await m.run(file, content, vault);
+    content = await vault.read(file);
+  }
+  await patchFrontmatter(file, "plugin-version", currentVersion, vault);
+  return true;
 }
 
 // src/NewCollectionModal.ts
@@ -554,6 +599,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     const fmLines = [
       "---",
       `cssclasses: collectors-file`,
+      `plugin-version: ${this.plugin.manifest.version}`,
       `collection-type: ${this.type}`,
       `collection-name: ${this.name}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : "",
@@ -801,6 +847,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
   }
   async refresh() {
     this.collections = await this.loadCollections();
+    await this.runMigrations();
     if (this.selected) {
       const updated = this.collections.find((c) => c.path === this.selected.path);
       this.selected = updated != null ? updated : null;
@@ -809,6 +856,15 @@ var DashboardView = class extends import_obsidian5.ItemView {
     this.render();
     this.runAutoUpdates();
     this.prefetchAllPrices();
+  }
+  async runMigrations() {
+    const currentVersion = this.plugin.manifest.version;
+    for (const coll of this.collections) {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (file instanceof import_obsidian5.TFile) {
+        await migrateCollection(file, coll.pluginVersion, currentVersion, this.app.vault);
+      }
+    }
   }
   // ── Price helpers ─────────────────────────────────────────────────────────────
   cardPrice(card) {
