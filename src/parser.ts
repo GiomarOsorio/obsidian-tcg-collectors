@@ -92,6 +92,8 @@ function parseCards(content: string): CollectionCard[] {
     const idMatch = checkboxCell.match(/id="([^"]+)"/);
     const id = idMatch ? idMatch[1] : Math.random().toString(36).slice(2);
     const owned = checkboxCell.includes('checked') && !checkboxCell.includes('unchecked');
+    const countMatch = checkboxCell.match(/data-count="(\d+)"/);
+    const count = countMatch ? parseInt(countMatch[1]) : (owned ? 1 : 0);
 
     const imageMatch = cells[1].match(/!\[.*?\]\((.*?)\)/);
     const imageUrl = imageMatch ? imageMatch[1] : '';
@@ -99,6 +101,7 @@ function parseCards(content: string): CollectionCard[] {
     cards.push({
       id,
       owned,
+      count,
       name: cells[2] || '',
       type: cells[3] || '',
       rarity: cells[4] || '',
@@ -210,6 +213,46 @@ export async function toggleCardOwned(
         `<input type="checkbox" unchecked id="${cardId}">`
       );
     }
+    break;
+  }
+
+  await vault.modify(file, lines.join('\n'));
+}
+
+export async function setCardCount(
+  file: TFile,
+  cardId: string,
+  count: number,
+  vault: Vault
+): Promise<void> {
+  const content = await vault.read(file);
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].includes(`id="${cardId}"`)) continue;
+
+    let line = lines[i];
+    const owned = count > 0;
+
+    // Sync checked/unchecked
+    if (owned) {
+      line = line.replace(`unchecked id="${cardId}"`, `checked id="${cardId}"`);
+    } else {
+      line = line.replace(`checked id="${cardId}"`, `unchecked id="${cardId}"`);
+    }
+
+    // Store count only when > 1 (1 is implied by checked)
+    if (count > 1) {
+      if (line.includes('data-count="')) {
+        line = line.replace(/data-count="\d+"/, `data-count="${count}"`);
+      } else {
+        line = line.replace(`id="${cardId}"`, `id="${cardId}" data-count="${count}"`);
+      }
+    } else {
+      line = line.replace(/\s*data-count="\d+"/, '');
+    }
+
+    lines[i] = line;
     break;
   }
 

@@ -106,11 +106,14 @@ function parseCards(content) {
     const idMatch = checkboxCell.match(/id="([^"]+)"/);
     const id = idMatch ? idMatch[1] : Math.random().toString(36).slice(2);
     const owned = checkboxCell.includes("checked") && !checkboxCell.includes("unchecked");
+    const countMatch = checkboxCell.match(/data-count="(\d+)"/);
+    const count = countMatch ? parseInt(countMatch[1]) : owned ? 1 : 0;
     const imageMatch = cells[1].match(/!\[.*?\]\((.*?)\)/);
     const imageUrl = imageMatch ? imageMatch[1] : "";
     cards.push({
       id,
       owned,
+      count,
       name: cells[2] || "",
       type: cells[3] || "",
       rarity: cells[4] || "",
@@ -181,22 +184,28 @@ async function appendCards(file, rows, vault) {
   }
   return newRows.length;
 }
-async function toggleCardOwned(file, cardId, owned, vault) {
+async function setCardCount(file, cardId, count, vault) {
   const content = await vault.read(file);
   const lines = content.split("\n");
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i].includes(`id="${cardId}"`)) continue;
+    let line = lines[i];
+    const owned = count > 0;
     if (owned) {
-      lines[i] = lines[i].replace(
-        `<input type="checkbox" unchecked id="${cardId}">`,
-        `<input type="checkbox" checked id="${cardId}">`
-      );
+      line = line.replace(`unchecked id="${cardId}"`, `checked id="${cardId}"`);
     } else {
-      lines[i] = lines[i].replace(
-        `<input type="checkbox" checked id="${cardId}">`,
-        `<input type="checkbox" unchecked id="${cardId}">`
-      );
+      line = line.replace(`checked id="${cardId}"`, `unchecked id="${cardId}"`);
     }
+    if (count > 1) {
+      if (line.includes('data-count="')) {
+        line = line.replace(/data-count="\d+"/, `data-count="${count}"`);
+      } else {
+        line = line.replace(`id="${cardId}"`, `id="${cardId}" data-count="${count}"`);
+      }
+    } else {
+      line = line.replace(/\s*data-count="\d+"/, "");
+    }
+    lines[i] = line;
     break;
   }
   await vault.modify(file, lines.join("\n"));
@@ -1215,29 +1224,40 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const meta = tileFooter.createDiv({ cls: "col-tile-meta" });
     meta.createEl("span", { cls: `col-rarity col-rarity-${card.rarity}`, text: (_c = (_b = card.rarity[0]) == null ? void 0 : _b.toUpperCase()) != null ? _c : "" });
     meta.createEl("span", { text: `${card.set} #${card.number}` });
-    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number) ? this.cardPrice(card) : null;
-    tileFooter.createEl("span", { cls: "col-tile-price", text: typeof p === "number" ? this.fmt(p) : "\u2014" });
-    const toggleBtn = tile.createEl("button", {
-      cls: `col-toggle${card.owned ? " col-toggle-owned" : ""}`,
-      attr: { title: card.owned ? "Mark as missing" : "Mark as owned" }
+    const countEl = meta.createEl("span", {
+      cls: `col-tile-count${card.count > 0 ? " col-tile-count-owned" : ""}`,
+      text: `\xD7${card.count}`
     });
-    toggleBtn.innerHTML = card.owned ? "\u2713" : "+";
-    toggleBtn.addEventListener("click", async (e) => {
+    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number) ? this.cardPrice(card) : null;
+    const priceEl = tileFooter.createEl("span", { cls: "col-tile-price" });
+    if (typeof p === "number") {
+      priceEl.textContent = this.fmt(p);
+    } else {
+      priceEl.textContent = "\u2014";
+      priceEl.addClass("col-tile-price-empty");
+    }
+    const applyCount = async (delta, e) => {
       e.stopPropagation();
       const file = this.app.vault.getAbstractFileByPath(coll.path);
       if (!(file instanceof import_obsidian5.TFile)) return;
-      const newOwned = !card.owned;
-      await toggleCardOwned(file, card.id, newOwned, this.app.vault);
-      card.owned = newOwned;
+      const newCount = Math.max(0, card.count + delta);
+      await setCardCount(file, card.id, newCount, this.app.vault);
+      card.count = newCount;
+      card.owned = newCount > 0;
       coll.owned = coll.cards.filter((c) => c.owned).length;
-      tile.toggleClass("col-tile-owned", newOwned);
-      ownedBadge.className = `col-owned-badge ${newOwned ? "col-owned-badge-yes" : "col-owned-badge-no"}`;
-      ownedBadge.textContent = newOwned ? "\u2713" : "\u2717";
-      toggleBtn.toggleClass("col-toggle-owned", newOwned);
-      toggleBtn.innerHTML = newOwned ? "\u2713" : "+";
-      toggleBtn.setAttribute("title", newOwned ? "Mark as missing" : "Mark as owned");
+      countEl.textContent = `\xD7${newCount}`;
+      countEl.className = `col-tile-count${newCount > 0 ? " col-tile-count-owned" : ""}`;
+      ownedBadge.className = `col-owned-badge ${newCount > 0 ? "col-owned-badge-yes" : "col-owned-badge-no"}`;
+      ownedBadge.textContent = newCount > 0 ? "\u2713" : "\u2717";
+      tile.toggleClass("col-tile-owned", newCount > 0);
       this.refreshDetailHero(coll);
-    });
+    };
+    const removeBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-remove", attr: { title: "Remove one copy" } });
+    removeBtn.textContent = "\u2212";
+    removeBtn.addEventListener("click", (e) => applyCount(-1, e));
+    const addBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-add", attr: { title: "Add one copy" } });
+    addBtn.textContent = "+";
+    addBtn.addEventListener("click", (e) => applyCount(1, e));
   }
   refreshDetailHero(coll) {
     const root = this.contentEl;
@@ -1699,8 +1719,11 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
       const set = (_i = (_h = cells[5].textContent) == null ? void 0 : _h.trim()) != null ? _i : "";
       const number = (_k = (_j = cells[6].textContent) == null ? void 0 : _j.trim()) != null ? _k : "";
       const id = cb.id;
-      let owned = cb.checked;
       const isFoil = id.endsWith("_f");
+      const isChecked = cb.checked;
+      const rawCount = cb.getAttribute("data-count");
+      let count = rawCount ? parseInt(rawCount) : isChecked ? 1 : 0;
+      let owned = count > 0;
       const tileCls = ["col-tile", owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
       const tile = grid.createDiv({ cls: tileCls });
       const ownedBadge = tile.createDiv({
@@ -1729,25 +1752,30 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
       const meta = footer.createDiv({ cls: "col-tile-meta" });
       meta.createEl("span", { cls: `col-rarity col-rarity-${rarity}`, text: (_n = (_m = rarity[0]) == null ? void 0 : _m.toUpperCase()) != null ? _n : "" });
       meta.createEl("span", { text: `${set} #${number}` });
-      footer.createEl("span", { cls: "col-tile-price", text: "\u2014" });
-      const toggleBtn = tile.createEl("button", {
-        cls: `col-toggle${owned ? " col-toggle-owned" : ""}`,
-        attr: { title: owned ? "Mark as missing" : "Mark as owned" }
+      const countEl = meta.createEl("span", {
+        cls: `col-tile-count${count > 0 ? " col-tile-count-owned" : ""}`,
+        text: `\xD7${count}`
       });
-      toggleBtn.innerHTML = owned ? "\u2713" : "+";
-      toggleBtn.addEventListener("click", async (e) => {
+      footer.createEl("span", { cls: "col-tile-price col-tile-price-empty", text: "\u2014" });
+      const applyCount = async (delta, e) => {
         e.stopPropagation();
         const file = this.app.vault.getAbstractFileByPath(sourcePath);
         if (!(file instanceof import_obsidian8.TFile)) return;
-        owned = !owned;
-        await toggleCardOwned(file, id, owned, this.app.vault);
-        tile.toggleClass("col-tile-owned", owned);
+        count = Math.max(0, count + delta);
+        owned = count > 0;
+        await setCardCount(file, id, count, this.app.vault);
+        countEl.textContent = `\xD7${count}`;
+        countEl.className = `col-tile-count${count > 0 ? " col-tile-count-owned" : ""}`;
         ownedBadge.className = `col-owned-badge ${owned ? "col-owned-badge-yes" : "col-owned-badge-no"}`;
         ownedBadge.textContent = owned ? "\u2713" : "\u2717";
-        toggleBtn.toggleClass("col-toggle-owned", owned);
-        toggleBtn.innerHTML = owned ? "\u2713" : "+";
-        toggleBtn.setAttribute("title", owned ? "Mark as missing" : "Mark as owned");
-      });
+        tile.toggleClass("col-tile-owned", owned);
+      };
+      const removeBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-remove", attr: { title: "Remove one copy" } });
+      removeBtn.textContent = "\u2212";
+      removeBtn.addEventListener("click", (e) => applyCount(-1, e));
+      const addBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-add", attr: { title: "Add one copy" } });
+      addBtn.textContent = "+";
+      addBtn.addEventListener("click", (e) => applyCount(1, e));
     }
     table.replaceWith(grid);
   }
