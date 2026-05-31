@@ -784,6 +784,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     this.finishFilter = "all";
     this.sortBy = "number";
     this.searchQuery = "";
+    this.saveTimers = /* @__PURE__ */ new Map();
     this.plugin = plugin;
   }
   getViewType() {
@@ -1232,12 +1233,10 @@ var DashboardView = class extends import_obsidian5.ItemView {
       priceEl.textContent = "\u2014";
       priceEl.addClass("col-tile-price-empty");
     }
-    const applyCount = async (delta, e) => {
+    const applyCount = (delta, e) => {
       e.stopPropagation();
-      const file = this.app.vault.getAbstractFileByPath(coll.path);
-      if (!(file instanceof import_obsidian5.TFile)) return;
       const newCount = Math.max(0, card.count + delta);
-      await setCardCount(file, card.id, newCount, this.app.vault);
+      if (newCount === card.count) return;
       card.count = newCount;
       card.owned = newCount > 0;
       coll.owned = coll.cards.filter((c) => c.owned).length;
@@ -1245,6 +1244,12 @@ var DashboardView = class extends import_obsidian5.ItemView {
       countEl.className = `col-tile-count${newCount > 0 ? " col-tile-count-owned" : ""}`;
       tile.toggleClass("col-tile-owned", newCount > 0);
       this.refreshDetailHero(coll);
+      clearTimeout(this.saveTimers.get(card.id));
+      this.saveTimers.set(card.id, setTimeout(async () => {
+        const file = this.app.vault.getAbstractFileByPath(coll.path);
+        if (file instanceof import_obsidian5.TFile) await setCardCount(file, card.id, card.count, this.app.vault);
+        this.saveTimers.delete(card.id);
+      }, 400));
     };
     const removeBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-remove", attr: { title: "Remove one copy" } });
     removeBtn.textContent = "\u2212";
@@ -1650,6 +1655,7 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
+    this.saveTimers = /* @__PURE__ */ new Map();
   }
   async onload() {
     await this.loadSettings();
@@ -1747,16 +1753,21 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
         text: `\xD7${count}`
       });
       footer.createEl("span", { cls: "col-tile-price col-tile-price-empty", text: "\u2014" });
-      const applyCount = async (delta, e) => {
+      const applyCount = (delta, e) => {
         e.stopPropagation();
-        const file = this.app.vault.getAbstractFileByPath(sourcePath);
-        if (!(file instanceof import_obsidian8.TFile)) return;
-        count = Math.max(0, count + delta);
+        const newCount = Math.max(0, count + delta);
+        if (newCount === count) return;
+        count = newCount;
         owned = count > 0;
-        await setCardCount(file, id, count, this.app.vault);
         countEl.textContent = `\xD7${count}`;
         countEl.className = `col-tile-count${count > 0 ? " col-tile-count-owned" : ""}`;
         tile.toggleClass("col-tile-owned", owned);
+        clearTimeout(this.saveTimers.get(id));
+        this.saveTimers.set(id, setTimeout(async () => {
+          const file = this.app.vault.getAbstractFileByPath(sourcePath);
+          if (file instanceof import_obsidian8.TFile) await setCardCount(file, id, count, this.app.vault);
+          this.saveTimers.delete(id);
+        }, 400));
       };
       const removeBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-remove", attr: { title: "Remove one copy" } });
       removeBtn.textContent = "\u2212";

@@ -24,6 +24,7 @@ export class DashboardView extends ItemView {
   private finishFilter: FinishFilter = 'all';
   private sortBy: SortBy = 'number';
   private searchQuery = '';
+  private saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(leaf: WorkspaceLeaf, plugin: CollectorsPlugin) {
     super(leaf);
@@ -555,12 +556,12 @@ export class DashboardView extends ItemView {
       priceEl.addClass('col-tile-price-empty');
     }
 
-    const applyCount = async (delta: number, e: MouseEvent) => {
+    const applyCount = (delta: number, e: MouseEvent) => {
       e.stopPropagation();
-      const file = this.app.vault.getAbstractFileByPath(coll.path);
-      if (!(file instanceof TFile)) return;
       const newCount = Math.max(0, card.count + delta);
-      await setCardCount(file, card.id, newCount, this.app.vault);
+      if (newCount === card.count) return;
+
+      // Update UI immediately — no await
       card.count = newCount;
       card.owned = newCount > 0;
       coll.owned = coll.cards.filter(c => c.owned).length;
@@ -568,6 +569,14 @@ export class DashboardView extends ItemView {
       countEl.className = `col-tile-count${newCount > 0 ? ' col-tile-count-owned' : ''}`;
       tile.toggleClass('col-tile-owned', newCount > 0);
       this.refreshDetailHero(coll);
+
+      // Debounce the file write — rapid clicks batch into one save
+      clearTimeout(this.saveTimers.get(card.id));
+      this.saveTimers.set(card.id, setTimeout(async () => {
+        const file = this.app.vault.getAbstractFileByPath(coll.path);
+        if (file instanceof TFile) await setCardCount(file, card.id, card.count, this.app.vault);
+        this.saveTimers.delete(card.id);
+      }, 400));
     };
 
     // − bottom-left

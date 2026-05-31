@@ -9,6 +9,7 @@ import { setCardCount } from './parser';
 export default class CollectorsPlugin extends Plugin {
   settings: CollectorsSettings = DEFAULT_SETTINGS;
   priceService!: PriceService;
+  private saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   async onload() {
     await this.loadSettings();
@@ -128,16 +129,25 @@ export default class CollectorsPlugin extends Plugin {
       });
       footer.createEl('span', { cls: 'col-tile-price col-tile-price-empty', text: '—' });
 
-      const applyCount = async (delta: number, e: MouseEvent) => {
+      const applyCount = (delta: number, e: MouseEvent) => {
         e.stopPropagation();
-        const file = this.app.vault.getAbstractFileByPath(sourcePath);
-        if (!(file instanceof TFile)) return;
-        count = Math.max(0, count + delta);
+        const newCount = Math.max(0, count + delta);
+        if (newCount === count) return;
+
+        // Update UI immediately
+        count = newCount;
         owned = count > 0;
-        await setCardCount(file, id, count, this.app.vault);
         countEl.textContent = `×${count}`;
         countEl.className = `col-tile-count${count > 0 ? ' col-tile-count-owned' : ''}`;
         tile.toggleClass('col-tile-owned', owned);
+
+        // Debounce the file write
+        clearTimeout(this.saveTimers.get(id));
+        this.saveTimers.set(id, setTimeout(async () => {
+          const file = this.app.vault.getAbstractFileByPath(sourcePath);
+          if (file instanceof TFile) await setCardCount(file, id, count, this.app.vault);
+          this.saveTimers.delete(id);
+        }, 400));
       };
 
       // − bottom-left
