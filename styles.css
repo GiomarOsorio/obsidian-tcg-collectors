@@ -421,13 +421,11 @@
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
   transition: transform 0.18s ease;
-  cursor: default;
+  cursor: pointer;
 }
 .col-tile:hover { transform: translateY(-3px) scale(1.05); }
-.col-tile,
-.col-tile *,
 .col-tile img,
-.col-tile .col-tile-img { cursor: default !important; }
+.col-tile .col-tile-img { cursor: pointer !important; }
 .col-tile-owned { border-color: var(--color-green, #4caf50); }
 
 
@@ -847,3 +845,112 @@
 
 /* ── Collection files: hide Obsidian Properties panel ────────────────────────── */
 .collectors-file .metadata-container { display: none !important; }
+
+/* ── Card Zoom Overlay ─────────────────────────────────────────────────────── */
+
+.col-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.3s ease;
+  cursor: default;
+}
+
+.col-zoom-overlay.col-zoom-active {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.col-zoom-wrapper {
+  perspective: 700px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.col-zoom-rotator {
+  --pointer-x: 50%;
+  --pointer-y: 50%;
+  --rx: 0deg;
+  --ry: 0deg;
+  --bg-x: 50%;
+  --bg-y: 50%;
+  --card-opacity: 0;
+
+  position: relative;
+  width: min(360px, 80vw);
+  aspect-ratio: 5 / 7;
+  border-radius: 4.5%;
+  overflow: hidden;
+  transform: rotateY(var(--rx)) rotateX(var(--ry));
+  transition: transform 0.6s cubic-bezier(.03,.98,.52,.99), box-shadow 0.4s ease;
+  cursor: none;
+  box-shadow:
+    0 0 3px -1px transparent,
+    0px 24px 60px -10px rgba(0, 0, 0, 0.85),
+    0 2px 18px -4px rgba(0, 0, 0, 0.7);
+  will-change: transform;
+}
+
+.col-zoom-rotator:hover {
+  transition: transform 0.05s linear, box-shadow 0.4s ease;
+  box-shadow:
+    0 0 3px -1px rgba(255, 255, 255, 0.6),
+    0 0 10px 2px rgba(120, 220, 255, 0.35),
+    0px 24px 60px -10px rgba(0, 0, 0, 0.85);
+}
+
+.col-zoom-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  cursor: none !important;
+  user-select: none;
+}
+
+.col-zoom-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image:
+    repeating-linear-gradient(
+      115deg,
+      rgba(255,   0, 128, 0.9)  0%,
+      rgba(255, 180,   0, 0.9) 14%,
+      rgba(255, 255,   0, 0.9) 28%,
+      rgba(  0, 255, 120, 0.9) 42%,
+      rgba(  0, 200, 255, 0.9) 57%,
+      rgba(120,   0, 255, 0.9) 71%,
+      rgba(255,   0, 128, 0.9) 85%,
+      rgba(255, 180,   0, 0.9) 100%
+    );
+  background-position: var(--bg-x) var(--bg-y);
+  background-size: 300% 300%;
+  mix-blend-mode: color-dodge;
+  opacity: var(--card-opacity);
+  filter: brightness(0.9) contrast(2.5) saturate(0.8);
+  transition: opacity 0.5s ease, background-position 0.08s linear;
+  pointer-events: none;
+}
+
+.col-zoom-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: radial-gradient(
+    farthest-corner circle at var(--pointer-x) var(--pointer-y),
+    rgba(255, 255, 255, 0.8) 10%,
+    rgba(255, 255, 255, 0.65) 20%,
+    rgba(0, 0, 0, 0.5) 90%
+  );
+  opacity: calc(var(--card-opacity) * 0.8);
+  mix-blend-mode: overlay;
+  filter: brightness(0.8) contrast(1.5);
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
