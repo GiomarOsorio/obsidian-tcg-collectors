@@ -95,6 +95,13 @@ export default class CollectorsPlugin extends Plugin {
       const tileCls = ['col-tile', owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
       const tile = grid.createDiv({ cls: tileCls });
 
+      // Owned badge — top-left
+      const ownedBadge = tile.createDiv({
+        cls: `col-owned-badge ${owned ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`,
+        text: owned ? '✓' : '✗',
+      });
+
+      // Foil badge — top-right
       if (isFoil) {
         tile.createDiv({ cls: 'col-foil-badge', text: 'F' });
       }
@@ -118,6 +125,7 @@ export default class CollectorsPlugin extends Plugin {
       const meta = footer.createDiv({ cls: 'col-tile-meta' });
       meta.createEl('span', { cls: `col-rarity col-rarity-${rarity}`, text: rarity[0]?.toUpperCase() ?? '' });
       meta.createEl('span', { text: `${set} #${number}` });
+      footer.createEl('span', { cls: 'col-tile-price', text: '—' });
 
       const toggleBtn = tile.createEl('button', {
         cls: `col-toggle${owned ? ' col-toggle-owned' : ''}`,
@@ -131,6 +139,8 @@ export default class CollectorsPlugin extends Plugin {
         owned = !owned;
         await toggleCardOwned(file, id, owned, this.app.vault);
         tile.toggleClass('col-tile-owned', owned);
+        ownedBadge.className = `col-owned-badge ${owned ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`;
+        ownedBadge.textContent = owned ? '✓' : '✗';
         toggleBtn.toggleClass('col-toggle-owned', owned);
         toggleBtn.innerHTML = owned ? '✓' : '+';
         toggleBtn.setAttribute('title', owned ? 'Mark as missing' : 'Mark as owned');
