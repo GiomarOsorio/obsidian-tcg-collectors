@@ -1190,6 +1190,10 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const isFoil = card.id.endsWith("_f");
     const tileCls = ["col-tile", card.owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
     const tile = grid.createDiv({ cls: tileCls });
+    const ownedBadge = tile.createDiv({
+      cls: `col-owned-badge ${card.owned ? "col-owned-badge-yes" : "col-owned-badge-no"}`,
+      text: card.owned ? "\u2713" : "\u2717"
+    });
     if (isFoil) {
       tile.createDiv({ cls: "col-foil-badge", text: "F" });
     }
@@ -1211,11 +1215,8 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const meta = tileFooter.createDiv({ cls: "col-tile-meta" });
     meta.createEl("span", { cls: `col-rarity col-rarity-${card.rarity}`, text: (_c = (_b = card.rarity[0]) == null ? void 0 : _b.toUpperCase()) != null ? _c : "" });
     meta.createEl("span", { text: `${card.set} #${card.number}` });
-    if (this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) {
-      const p = this.cardPrice(card);
-      const priceText = typeof p === "number" ? this.fmt(p) : "\u2014";
-      tileFooter.createEl("span", { cls: "col-tile-price", text: priceText });
-    }
+    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number) ? this.cardPrice(card) : null;
+    tileFooter.createEl("span", { cls: "col-tile-price", text: typeof p === "number" ? this.fmt(p) : "\u2014" });
     const toggleBtn = tile.createEl("button", {
       cls: `col-toggle${card.owned ? " col-toggle-owned" : ""}`,
       attr: { title: card.owned ? "Mark as missing" : "Mark as owned" }
@@ -1230,6 +1231,8 @@ var DashboardView = class extends import_obsidian5.ItemView {
       card.owned = newOwned;
       coll.owned = coll.cards.filter((c) => c.owned).length;
       tile.toggleClass("col-tile-owned", newOwned);
+      ownedBadge.className = `col-owned-badge ${newOwned ? "col-owned-badge-yes" : "col-owned-badge-no"}`;
+      ownedBadge.textContent = newOwned ? "\u2713" : "\u2717";
       toggleBtn.toggleClass("col-toggle-owned", newOwned);
       toggleBtn.innerHTML = newOwned ? "\u2713" : "+";
       toggleBtn.setAttribute("title", newOwned ? "Mark as missing" : "Mark as owned");
@@ -1700,6 +1703,10 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
       const isFoil = id.endsWith("_f");
       const tileCls = ["col-tile", owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
       const tile = grid.createDiv({ cls: tileCls });
+      const ownedBadge = tile.createDiv({
+        cls: `col-owned-badge ${owned ? "col-owned-badge-yes" : "col-owned-badge-no"}`,
+        text: owned ? "\u2713" : "\u2717"
+      });
       if (isFoil) {
         tile.createDiv({ cls: "col-foil-badge", text: "F" });
       }
@@ -1722,6 +1729,7 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
       const meta = footer.createDiv({ cls: "col-tile-meta" });
       meta.createEl("span", { cls: `col-rarity col-rarity-${rarity}`, text: (_n = (_m = rarity[0]) == null ? void 0 : _m.toUpperCase()) != null ? _n : "" });
       meta.createEl("span", { text: `${set} #${number}` });
+      footer.createEl("span", { cls: "col-tile-price", text: "\u2014" });
       const toggleBtn = tile.createEl("button", {
         cls: `col-toggle${owned ? " col-toggle-owned" : ""}`,
         attr: { title: owned ? "Mark as missing" : "Mark as owned" }
@@ -1734,6 +1742,8 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
         owned = !owned;
         await toggleCardOwned(file, id, owned, this.app.vault);
         tile.toggleClass("col-tile-owned", owned);
+        ownedBadge.className = `col-owned-badge ${owned ? "col-owned-badge-yes" : "col-owned-badge-no"}`;
+        ownedBadge.textContent = owned ? "\u2713" : "\u2717";
         toggleBtn.toggleClass("col-toggle-owned", owned);
         toggleBtn.innerHTML = owned ? "\u2713" : "+";
         toggleBtn.setAttribute("title", owned ? "Mark as missing" : "Mark as owned");

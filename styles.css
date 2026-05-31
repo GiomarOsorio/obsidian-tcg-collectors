@@ -413,16 +413,6 @@
   gap: 10px;
 }
 
-@keyframes col-breath-owned {
-  0%, 100% { box-shadow: 0 0 4px 1px rgba(76,175,80,0.25); }
-  50%       { box-shadow: 0 0 18px 5px rgba(76,175,80,0.62); }
-}
-
-@keyframes col-breath-missing {
-  0%, 100% { box-shadow: 0 0 4px 1px rgba(239,83,80,0.25); }
-  50%       { box-shadow: 0 0 18px 5px rgba(239,83,80,0.62); }
-}
-
 /* ── Tile ─────────────────────────────────────────────────────────────────────── */
 .col-tile {
   position: relative;
@@ -432,15 +422,38 @@
   background: var(--background-secondary);
   transition: transform 0.18s ease;
   cursor: default;
-  animation: col-breath-missing 3.5s ease-in-out infinite;
 }
-.col-tile:hover {
-  transform: translateY(-3px) scale(1.05);
-  animation-play-state: paused;
+.col-tile:hover { transform: translateY(-3px) scale(1.05); }
+.col-tile * { cursor: default; }
+.col-tile-owned { border-color: var(--color-green, #4caf50); }
+
+/* ── Owned badge (top-left) ────────────────────────────────────────────────────── */
+.col-owned-badge {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  z-index: 4;
+  pointer-events: none;
+  line-height: 1;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.25);
+  border: 1.5px solid rgba(255,255,255,0.35);
 }
-.col-tile-owned {
-  border-color: var(--color-green, #4caf50);
-  animation-name: col-breath-owned;
+.col-owned-badge-yes {
+  background: linear-gradient(to bottom, #66BB6A, #2E7D32);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+.col-owned-badge-no {
+  background: linear-gradient(to bottom, #555, #2a2a2a);
+  color: rgba(255,255,255,0.55);
 }
 
 /* ── Foil shimmer ──────────────────────────────────────────────────────────────── */
