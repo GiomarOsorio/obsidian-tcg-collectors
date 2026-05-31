@@ -515,6 +515,13 @@ export class DashboardView extends ItemView {
     const tileCls = ['col-tile', card.owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
     const tile = grid.createDiv({ cls: tileCls });
 
+    // Owned badge — top-left
+    const ownedBadge = tile.createDiv({
+      cls: `col-owned-badge ${card.owned ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`,
+      text: card.owned ? '✓' : '✗',
+    });
+
+    // Foil badge — top-right
     if (isFoil) {
       tile.createDiv({ cls: 'col-foil-badge', text: 'F' });
     }
@@ -539,12 +546,10 @@ export class DashboardView extends ItemView {
     meta.createEl('span', { cls: `col-rarity col-rarity-${card.rarity}`, text: card.rarity[0]?.toUpperCase() ?? '' });
     meta.createEl('span', { text: `${card.set} #${card.number}` });
 
-    // Price
-    if (this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) {
-      const p = this.cardPrice(card);
-      const priceText = typeof p === 'number' ? this.fmt(p) : '—';
-      tileFooter.createEl('span', { cls: 'col-tile-price', text: priceText });
-    }
+    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)
+      ? this.cardPrice(card)
+      : null;
+    tileFooter.createEl('span', { cls: 'col-tile-price', text: typeof p === 'number' ? this.fmt(p) : '—' });
 
     const toggleBtn = tile.createEl('button', {
       cls: `col-toggle${card.owned ? ' col-toggle-owned' : ''}`,
@@ -560,6 +565,8 @@ export class DashboardView extends ItemView {
       card.owned = newOwned;
       coll.owned = coll.cards.filter(c => c.owned).length;
       tile.toggleClass('col-tile-owned', newOwned);
+      ownedBadge.className = `col-owned-badge ${newOwned ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`;
+      ownedBadge.textContent = newOwned ? '✓' : '✗';
       toggleBtn.toggleClass('col-toggle-owned', newOwned);
       toggleBtn.innerHTML = newOwned ? '✓' : '+';
       toggleBtn.setAttribute('title', newOwned ? 'Mark as missing' : 'Mark as owned');
