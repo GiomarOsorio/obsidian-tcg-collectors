@@ -424,7 +424,10 @@
   cursor: default;
 }
 .col-tile:hover { transform: translateY(-3px) scale(1.05); }
-.col-tile * { cursor: default; }
+.col-tile,
+.col-tile *,
+.col-tile img,
+.col-tile .col-tile-img { cursor: default !important; }
 .col-tile-owned { border-color: var(--color-green, #4caf50); }
 
 
