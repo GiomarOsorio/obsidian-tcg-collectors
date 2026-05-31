@@ -413,6 +413,16 @@
   gap: 10px;
 }
 
+@keyframes col-breath-owned {
+  0%, 100% { box-shadow: 0 0 4px 1px rgba(76,175,80,0.25); }
+  50%       { box-shadow: 0 0 18px 5px rgba(76,175,80,0.62); }
+}
+
+@keyframes col-breath-missing {
+  0%, 100% { box-shadow: 0 0 4px 1px rgba(239,83,80,0.25); }
+  50%       { box-shadow: 0 0 18px 5px rgba(239,83,80,0.62); }
+}
+
 /* ── Tile ─────────────────────────────────────────────────────────────────────── */
 .col-tile {
   position: relative;
@@ -420,15 +430,19 @@
   overflow: hidden;
   border: 2px solid var(--background-modifier-border);
   background: var(--background-secondary);
-  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, transform 0.15s;
   cursor: default;
+  animation: col-breath-missing 3.5s ease-in-out infinite;
 }
 .col-tile:hover {
   transform: translateY(-3px);
   border-color: var(--interactive-accent);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  animation-play-state: paused;
 }
-.col-tile-owned { border-color: var(--color-green, #4caf50); }
+.col-tile-owned {
+  border-color: var(--color-green, #4caf50);
+  animation-name: col-breath-owned;
+}
 .col-tile-owned:hover { border-color: var(--color-green, #4caf50); }
 
 .col-tile-img {
