@@ -32,6 +32,7 @@ export type PriceSource = 'scryfall-usd' | 'scryfall-eur' | 'tcgplayer' | 'cardm
 export interface CollectorsSettings {
   collectionsFolder: string;
   autoDetect: boolean;
+  cardViewInFiles: boolean;
   priceSource: PriceSource;
   tcgplayerKey: string;
   cardmarketAppToken: string;
@@ -43,6 +44,7 @@ export interface CollectorsSettings {
 export const DEFAULT_SETTINGS: CollectorsSettings = {
   collectionsFolder: '',
   autoDetect: true,
+  cardViewInFiles: true,
   priceSource: 'scryfall-usd',
   tcgplayerKey: '',
   cardmarketAppToken: '',
