@@ -98,12 +98,6 @@ export default class CollectorsPlugin extends Plugin {
       const tileCls = ['col-tile', owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
       const tile = grid.createDiv({ cls: tileCls });
 
-      // Owned badge — top-left
-      const ownedBadge = tile.createDiv({
-        cls: `col-owned-badge ${owned ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`,
-        text: owned ? '✓' : '✗',
-      });
-
       // Foil badge — top-right
       if (isFoil) {
         tile.createDiv({ cls: 'col-foil-badge', text: 'F' });
@@ -143,8 +137,6 @@ export default class CollectorsPlugin extends Plugin {
         await setCardCount(file, id, count, this.app.vault);
         countEl.textContent = `×${count}`;
         countEl.className = `col-tile-count${count > 0 ? ' col-tile-count-owned' : ''}`;
-        ownedBadge.className = `col-owned-badge ${owned ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`;
-        ownedBadge.textContent = owned ? '✓' : '✗';
         tile.toggleClass('col-tile-owned', owned);
       };
 
