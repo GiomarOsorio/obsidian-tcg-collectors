@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
 import { CollectionType } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
-import { appendCards } from './parser';
+import { appendCards, patchFrontmatter } from './parser';
 
 type TCGGame = 'mtg' | 'pokemon' | 'onepiece' | 'yugioh';
 
@@ -275,9 +275,12 @@ export class NewCollectionModal extends Modal {
 
     const fmLines = [
       '---',
+      `cssclasses: collectors-file`,
       `collection-type: ${this.type}`,
       `collection-name: ${this.name}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : '',
+      isSet ? `finish-import: ${this.finishImport}` : '',
+      isSet ? `all-prints: ${this.allPrints}` : '',
       !isSet && this.scryfallQuery ? `scryfall-query: ${this.scryfallQuery}` : '',
       !isSet && this.scryfallOrder && this.scryfallOrder !== 'released' ? `scryfall-order: ${this.scryfallOrder}` : '',
       this.autoUpdate ? 'auto-update: true' : '',
@@ -327,6 +330,8 @@ export class NewCollectionModal extends Modal {
       });
 
       const added = await appendCards(file, rows, this.app.vault);
+      const today = new Date().toISOString().slice(0, 10);
+      await patchFrontmatter(file, 'last-fetched', today, this.app.vault);
       new Notice(`Added ${added} cards to "${this.name}".`);
     } catch (e) {
       new Notice(`Scryfall fetch failed: ${(e as Error).message}`);
