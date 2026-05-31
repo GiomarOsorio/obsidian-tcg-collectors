@@ -14,20 +14,22 @@ export function openCardZoom(imageUrl: string, name: string, isFoil: boolean): v
   wrapper.className = 'col-zoom-wrapper';
 
   const rotator = document.createElement('div');
-  rotator.className = 'col-zoom-rotator' + (isFoil ? ' col-zoom-foil' : '');
+  rotator.className = 'col-zoom-rotator';
 
   const img = document.createElement('img');
   img.src = imageUrl;
   img.alt = name;
   img.className = 'col-zoom-img';
 
-  const shine = document.createElement('div');
-  shine.className = 'col-zoom-shine';
-
-  const glare = document.createElement('div');
-  glare.className = 'col-zoom-glare';
-
-  rotator.append(img, shine, glare);
+  if (isFoil) {
+    const shine = document.createElement('div');
+    shine.className = 'col-zoom-shine';
+    const glare = document.createElement('div');
+    glare.className = 'col-zoom-glare';
+    rotator.append(img, shine, glare);
+  } else {
+    rotator.append(img);
+  }
   wrapper.append(rotator);
   overlay.append(wrapper);
   document.body.append(overlay);

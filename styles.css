@@ -919,21 +919,23 @@
   border-radius: inherit;
   background-image:
     repeating-linear-gradient(
-      110deg,
-      #f80e35, #0dbde9, #21e985, #eedf10, #f80e35,
-      #0dbde9, #21e985, #eedf10, #c929f1, #f80e35
+      115deg,
+      rgba(255,   0, 128, 0.9)  0%,
+      rgba(255, 180,   0, 0.9) 14%,
+      rgba(255, 255,   0, 0.9) 28%,
+      rgba(  0, 255, 120, 0.9) 42%,
+      rgba(  0, 200, 255, 0.9) 57%,
+      rgba(120,   0, 255, 0.9) 71%,
+      rgba(255,   0, 128, 0.9) 85%,
+      rgba(255, 180,   0, 0.9) 100%
     );
   background-position: var(--bg-x) var(--bg-y);
-  background-size: 400% 400%;
+  background-size: 300% 300%;
   mix-blend-mode: color-dodge;
   opacity: var(--card-opacity);
-  filter: brightness(0.85) contrast(2.75) saturate(0.65);
+  filter: brightness(0.9) contrast(2.5) saturate(0.8);
   transition: opacity 0.5s ease, background-position 0.08s linear;
   pointer-events: none;
-}
-
-.col-zoom-foil .col-zoom-shine {
-  filter: brightness(1) contrast(3) saturate(1.1);
 }
 
 .col-zoom-glare {
