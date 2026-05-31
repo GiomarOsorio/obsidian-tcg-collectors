@@ -47,6 +47,17 @@ export class CollectorsSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName('Card view in files')
+      .setDesc('Show collection cards as visual tiles in reading mode. Disable to show the raw table.')
+      .addToggle(t =>
+        t.setValue(this.plugin.settings.cardViewInFiles)
+          .onChange(async v => {
+            this.plugin.settings.cardViewInFiles = v;
+            await this.plugin.saveSettings();
+          })
+      );
+
     // ── Price Sources ──────────────────────────────────────────────────────────
     containerEl.createEl('h2', { text: 'Price Sources' });
     containerEl.createEl('p', {
