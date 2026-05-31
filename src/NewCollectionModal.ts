@@ -276,6 +276,7 @@ export class NewCollectionModal extends Modal {
     const fmLines = [
       '---',
       `cssclasses: collectors-file`,
+      `plugin-version: ${this.plugin.manifest.version}`,
       `collection-type: ${this.type}`,
       `collection-name: ${this.name}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : '',
