@@ -847,22 +847,22 @@ var DashboardView = class extends import_obsidian5.ItemView {
   }
   async refresh() {
     this.collections = await this.loadCollections();
-    await this.runMigrations();
     if (this.selected) {
       const updated = this.collections.find((c) => c.path === this.selected.path);
       this.selected = updated != null ? updated : null;
       if (!this.selected) this.screen = "list";
     }
     this.render();
+    this.runMigrations();
     this.runAutoUpdates();
     this.prefetchAllPrices();
   }
-  async runMigrations() {
+  runMigrations() {
     const currentVersion = this.plugin.manifest.version;
     for (const coll of this.collections) {
       const file = this.app.vault.getAbstractFileByPath(coll.path);
       if (file instanceof import_obsidian5.TFile) {
-        await migrateCollection(file, coll.pluginVersion, currentVersion, this.app.vault);
+        migrateCollection(file, coll.pluginVersion, currentVersion, this.app.vault);
       }
     }
   }
@@ -1329,22 +1329,27 @@ var DashboardView = class extends import_obsidian5.ItemView {
   }
   // ── Scryfall update ───────────────────────────────────────────────────────────
   async updateFromScryfall(coll, silent = false) {
-    var _a;
+    var _a, _b;
     if (!silent) new import_obsidian5.Notice(`Fetching cards for "${coll.name}"...`);
     try {
-      const cards = coll.setCode ? await fetchSetCards(coll.setCode, (p) => {
+      const finish = (_a = coll.finishImport) != null ? _a : "all";
+      const unique = coll.allPrints === false ? "cards" : "prints";
+      const rawCards = coll.setCode ? await fetchSetCards(coll.setCode, (p) => {
         if (!silent) new import_obsidian5.Notice(`Fetching page ${p}...`);
-      }) : await fetchSearchCards(
+      }, unique) : await fetchSearchCards(
         coll.scryfallQuery,
         (p) => {
           if (!silent) new import_obsidian5.Notice(`Fetching page ${p}...`);
         },
-        (_a = coll.scryfallOrder) != null ? _a : "released"
+        (_b = coll.scryfallOrder) != null ? _b : "released"
       );
+      const cards = finish === "all" ? rawCards : rawCards.map((c) => ({ ...c, finishes: c.finishes.filter((f) => f === finish) })).filter((c) => c.finishes.length > 0);
       const file = this.app.vault.getAbstractFileByPath(coll.path);
       if (!(file instanceof import_obsidian5.TFile)) return 0;
       const rows = cards.flatMap(cardToMarkdownRows);
       const added = await appendCards(file, rows, this.app.vault);
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      await patchFrontmatter(file, "last-fetched", today, this.app.vault);
       if (!silent) {
         new import_obsidian5.Notice(
           added > 0 ? `Added ${added} new cards to "${coll.name}".` : `"${coll.name}" is already up to date.`
