@@ -17,6 +17,7 @@ export async function parseCollectionFile(
   let finishImport: 'all' | 'foil' | 'nonfoil' | undefined;
   let allPrints: boolean | undefined;
   let lastFetched: string | undefined;
+  let pluginVersion: string | undefined;
   let collectionName = file.basename;
 
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -53,6 +54,9 @@ export async function parseCollectionFile(
         case 'last-fetched':
           lastFetched = val;
           break;
+        case 'plugin-version':
+          pluginVersion = val;
+          break;
       }
     }
   }
@@ -73,6 +77,7 @@ export async function parseCollectionFile(
     finishImport,
     allPrints,
     lastFetched,
+    pluginVersion,
     cards,
     owned: cards.filter(c => c.owned).length,
     total: cards.length,
