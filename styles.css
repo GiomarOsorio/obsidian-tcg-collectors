@@ -513,8 +513,6 @@
   line-height: 1;
 }
 
-.col-tile-foil .col-toggle { top: 28px; }
-
 .col-tile-img {
   width: 100%;
   display: block;
@@ -535,7 +533,7 @@
 }
 
 .col-tile-footer {
-  padding: 6px 7px;
+  padding: 6px 7px 30px;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -566,42 +564,48 @@
   color: var(--interactive-accent);
   display: block;
 }
+.col-tile-price-empty {
+  color: var(--text-faint);
+  font-weight: 400;
+}
 
-/* ── Toggle button ─────────────────────────────────────────────────────────────── */
-.col-toggle {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.5);
-  background: rgba(0,0,0,0.45);
-  color: white;
-  font-size: 0.8em;
+.col-tile-count {
+  font-size: 0.65em;
   font-weight: 700;
-  cursor: pointer;
+  color: var(--text-faint);
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--background-modifier-hover);
+  flex-shrink: 0;
+}
+.col-tile-count-owned { color: var(--color-green, #4caf50); }
+
+/* ── Qty buttons (bottom corners) ─────────────────────────────────────────────── */
+.col-qty-btn {
+  position: absolute;
+  bottom: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.4);
+  background: rgba(0,0,0,0.5);
+  color: white;
+  font-size: 1em;
+  font-weight: 700;
+  cursor: pointer !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  z-index: 4;
   line-height: 1;
   padding: 0;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
   backdrop-filter: blur(4px);
 }
-.col-toggle:hover {
-  background: var(--interactive-accent);
-  border-color: var(--interactive-accent);
-  transform: scale(1.15);
-}
-.col-toggle-owned {
-  background: var(--color-green, #4caf50);
-  border-color: var(--color-green, #4caf50);
-}
-.col-toggle-owned:hover {
-  background: var(--color-red, #f44336);
-  border-color: var(--color-red, #f44336);
-}
+.col-qty-add  { right: 5px; }
+.col-qty-remove { left: 5px; }
+.col-qty-add:hover  { background: var(--interactive-accent); border-color: var(--interactive-accent); transform: scale(1.15); }
+.col-qty-remove:hover { background: rgba(239,83,80,0.75); border-color: rgba(239,83,80,0.75); transform: scale(1.15); }
 
 /* ── Rarity colors ─────────────────────────────────────────────────────────────── */
 .col-rarity {
@@ -860,11 +864,7 @@
 
 /* ── Mobile / touch ───────────────────────────────────────────────────────────── */
 @media (pointer: coarse) {
-  .col-toggle {
-    width: 32px;
-    height: 32px;
-    font-size: 1em;
-  }
+  .col-qty-btn { width: 28px; height: 28px; font-size: 1em; }
   .col-btn-icon { padding: 9px 12px; }
   .col-btn { padding: 9px 14px; }
   .col-tab { padding: 9px 14px; }

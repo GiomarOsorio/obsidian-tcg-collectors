@@ -4,7 +4,7 @@ import { NewCollectionModal } from './NewCollectionModal';
 import { CollectorsSettings, DEFAULT_SETTINGS } from './types';
 import { CollectorsSettingTab } from './settings';
 import { PriceService } from './PriceService';
-import { toggleCardOwned } from './parser';
+import { setCardCount } from './parser';
 
 export default class CollectorsPlugin extends Plugin {
   settings: CollectorsSettings = DEFAULT_SETTINGS;
@@ -89,8 +89,11 @@ export default class CollectorsPlugin extends Plugin {
       const set      = cells[5].textContent?.trim() ?? '';
       const number   = cells[6].textContent?.trim() ?? '';
       const id       = cb.id;
-      let owned      = cb.checked;
       const isFoil   = id.endsWith('_f');
+      const isChecked = cb.checked;
+      const rawCount  = cb.getAttribute('data-count');
+      let count       = rawCount ? parseInt(rawCount) : (isChecked ? 1 : 0);
+      let owned       = count > 0;
 
       const tileCls = ['col-tile', owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
       const tile = grid.createDiv({ cls: tileCls });
@@ -125,26 +128,35 @@ export default class CollectorsPlugin extends Plugin {
       const meta = footer.createDiv({ cls: 'col-tile-meta' });
       meta.createEl('span', { cls: `col-rarity col-rarity-${rarity}`, text: rarity[0]?.toUpperCase() ?? '' });
       meta.createEl('span', { text: `${set} #${number}` });
-      footer.createEl('span', { cls: 'col-tile-price', text: '—' });
-
-      const toggleBtn = tile.createEl('button', {
-        cls: `col-toggle${owned ? ' col-toggle-owned' : ''}`,
-        attr: { title: owned ? 'Mark as missing' : 'Mark as owned' },
+      const countEl = meta.createEl('span', {
+        cls: `col-tile-count${count > 0 ? ' col-tile-count-owned' : ''}`,
+        text: `×${count}`,
       });
-      toggleBtn.innerHTML = owned ? '✓' : '+';
-      toggleBtn.addEventListener('click', async e => {
+      footer.createEl('span', { cls: 'col-tile-price col-tile-price-empty', text: '—' });
+
+      const applyCount = async (delta: number, e: MouseEvent) => {
         e.stopPropagation();
         const file = this.app.vault.getAbstractFileByPath(sourcePath);
         if (!(file instanceof TFile)) return;
-        owned = !owned;
-        await toggleCardOwned(file, id, owned, this.app.vault);
-        tile.toggleClass('col-tile-owned', owned);
+        count = Math.max(0, count + delta);
+        owned = count > 0;
+        await setCardCount(file, id, count, this.app.vault);
+        countEl.textContent = `×${count}`;
+        countEl.className = `col-tile-count${count > 0 ? ' col-tile-count-owned' : ''}`;
         ownedBadge.className = `col-owned-badge ${owned ? 'col-owned-badge-yes' : 'col-owned-badge-no'}`;
         ownedBadge.textContent = owned ? '✓' : '✗';
-        toggleBtn.toggleClass('col-toggle-owned', owned);
-        toggleBtn.innerHTML = owned ? '✓' : '+';
-        toggleBtn.setAttribute('title', owned ? 'Mark as missing' : 'Mark as owned');
-      });
+        tile.toggleClass('col-tile-owned', owned);
+      };
+
+      // − bottom-left
+      const removeBtn = tile.createEl('button', { cls: 'col-qty-btn col-qty-remove', attr: { title: 'Remove one copy' } });
+      removeBtn.textContent = '−';
+      removeBtn.addEventListener('click', e => applyCount(-1, e));
+
+      // + bottom-right
+      const addBtn = tile.createEl('button', { cls: 'col-qty-btn col-qty-add', attr: { title: 'Add one copy' } });
+      addBtn.textContent = '+';
+      addBtn.addEventListener('click', e => applyCount(+1, e));
     }
 
     table.replaceWith(grid);

@@ -1,6 +1,7 @@
 export interface CollectionCard {
   id: string;
   owned: boolean;
+  count: number;
   name: string;
   type: string;
   rarity: string;
