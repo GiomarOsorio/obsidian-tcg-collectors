@@ -271,6 +271,83 @@ async function migrateCollection(file, fileVersion, currentVersion, vault) {
   return true;
 }
 
+// src/CardZoomModal.ts
+function clamp(v, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, v));
+}
+function adjust(val, fromMin, fromMax, toMin, toMax) {
+  return toMin + (toMax - toMin) * ((val - fromMin) / (fromMax - fromMin));
+}
+function openCardZoom(imageUrl, name, isFoil) {
+  const overlay = document.createElement("div");
+  overlay.className = "col-zoom-overlay";
+  const wrapper = document.createElement("div");
+  wrapper.className = "col-zoom-wrapper";
+  const rotator = document.createElement("div");
+  rotator.className = "col-zoom-rotator";
+  const img = document.createElement("img");
+  img.src = imageUrl;
+  img.alt = name;
+  img.className = "col-zoom-img";
+  if (isFoil) {
+    const shine = document.createElement("div");
+    shine.className = "col-zoom-shine";
+    const glare = document.createElement("div");
+    glare.className = "col-zoom-glare";
+    rotator.append(img, shine, glare);
+  } else {
+    rotator.append(img);
+  }
+  wrapper.append(rotator);
+  overlay.append(wrapper);
+  document.body.append(overlay);
+  requestAnimationFrame(() => overlay.classList.add("col-zoom-active"));
+  const close = () => {
+    overlay.classList.remove("col-zoom-active");
+    document.removeEventListener("keydown", onKeyDown);
+    setTimeout(() => overlay.remove(), 300);
+  };
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") close();
+  };
+  document.addEventListener("keydown", onKeyDown);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay || e.target === wrapper) close();
+  });
+  let rafId = null;
+  rotator.addEventListener("pointermove", (e) => {
+    const rect = rotator.getBoundingClientRect();
+    const px = clamp((e.clientX - rect.left) / rect.width * 100);
+    const py = clamp((e.clientY - rect.top) / rect.height * 100);
+    const cx = px - 50;
+    const cy = py - 50;
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      rotator.style.setProperty("--pointer-x", `${px}%`);
+      rotator.style.setProperty("--pointer-y", `${py}%`);
+      rotator.style.setProperty("--rx", `${-(cx / 3.5)}deg`);
+      rotator.style.setProperty("--ry", `${cy / 3.5}deg`);
+      rotator.style.setProperty("--bg-x", `${adjust(px, 0, 100, 37, 63)}%`);
+      rotator.style.setProperty("--bg-y", `${adjust(py, 0, 100, 33, 67)}%`);
+      rotator.style.setProperty("--card-opacity", "1");
+      rafId = null;
+    });
+  });
+  rotator.addEventListener("pointerleave", () => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    rotator.style.setProperty("--rx", "0deg");
+    rotator.style.setProperty("--ry", "0deg");
+    rotator.style.setProperty("--pointer-x", "50%");
+    rotator.style.setProperty("--pointer-y", "50%");
+    rotator.style.setProperty("--bg-x", "50%");
+    rotator.style.setProperty("--bg-y", "50%");
+    rotator.style.setProperty("--card-opacity", "0");
+  });
+}
+
 // src/NewCollectionModal.ts
 var import_obsidian2 = require("obsidian");
 
@@ -1269,6 +1346,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
         img.style.display = "none";
         tile.createEl("div", { cls: "col-tile-img-fallback", text: (_a2 = card.name[0]) != null ? _a2 : "?" });
       });
+      tile.addEventListener("click", () => openCardZoom(card.imageUrl, card.name, isFoil));
     } else {
       tile.createDiv({ cls: "col-tile-img-fallback", text: (_a = card.name[0]) != null ? _a : "?" });
     }
@@ -1801,6 +1879,7 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
           fb.setText((_a2 = name[0]) != null ? _a2 : "?");
           img.replaceWith(fb);
         });
+        tile.addEventListener("click", () => openCardZoom(imageUrl, name, isFoil));
       } else {
         tile.createDiv({ cls: "col-tile-img-fallback" }).setText((_l = name[0]) != null ? _l : "?");
       }
