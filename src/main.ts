@@ -90,8 +90,14 @@ export default class CollectorsPlugin extends Plugin {
       const number   = cells[6].textContent?.trim() ?? '';
       const id       = cb.id;
       let owned      = cb.checked;
+      const isFoil   = id.endsWith('_f');
 
-      const tile = grid.createDiv({ cls: `col-tile${owned ? ' col-tile-owned' : ''}` });
+      const tileCls = ['col-tile', owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
+      const tile = grid.createDiv({ cls: tileCls });
+
+      if (isFoil) {
+        tile.createDiv({ cls: 'col-foil-badge', text: 'F' });
+      }
 
       if (imageUrl.startsWith('https://')) {
         const img = tile.createEl('img', {
