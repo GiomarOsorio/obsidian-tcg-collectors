@@ -292,6 +292,14 @@ export class DashboardView extends ItemView {
       });
     }
 
+    const editBtn = cardActions.createEl('button', { cls: 'col-btn-icon', attr: { title: 'Edit collection' } });
+    editBtn.innerHTML = '✎';
+    editBtn.addEventListener('click', () => {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (!(file instanceof TFile)) return;
+      new NewCollectionModal(this.app, this.plugin, () => this.refresh(), { collection: coll, file }).open();
+    });
+
     const openBtn = cardActions.createEl('button', { cls: 'col-btn-icon', attr: { title: 'Open file' } });
     openBtn.innerHTML = '↗';
     openBtn.addEventListener('click', () => this.openFile(coll.path));
