@@ -1,22 +1,16 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import type CollectorsPlugin from './main';
 import type { PriceSource, TCGGame } from './types';
-
-const PRICE_SOURCE_LABELS: Record<PriceSource, string> = {
-  'scryfall-usd': 'Scryfall — USD',
-  'scryfall-eur': 'Scryfall — EUR',
-  'tcgplayer':    'TCGPlayer (API key required)',
-  'cardmarket':   'Cardmarket (credentials required)',
-};
+import { t } from './i18n';
 
 type TabId = 'general' | TCGGame;
 
-const TABS: { id: TabId; icon: string; label: string }[] = [
-  { id: 'general',  icon: '⚙',  label: 'General'             },
-  { id: 'mtg',      icon: '✦',  label: 'Magic: The Gathering' },
-  { id: 'pokemon',  icon: '⚡', label: 'Pokémon'              },
-  { id: 'onepiece', icon: '☠',  label: 'One Piece'            },
-  { id: 'yugioh',   icon: '👁', label: 'Yu-Gi-Oh!'            },
+const TABS = (): { id: TabId; icon: string; label: string }[] => [
+  { id: 'general',  icon: '⚙',  label: t('settings_tab_general')  },
+  { id: 'mtg',      icon: '✦',  label: t('settings_tab_mtg')      },
+  { id: 'pokemon',  icon: '⚡', label: t('settings_tab_pokemon')  },
+  { id: 'onepiece', icon: '☠',  label: t('settings_tab_onepiece') },
+  { id: 'yugioh',   icon: '👁', label: t('settings_tab_yugioh')   },
 ];
 
 export class CollectorsSettingTab extends PluginSettingTab {
@@ -47,7 +41,7 @@ export class CollectorsSettingTab extends PluginSettingTab {
       }
     };
 
-    for (const { id, icon, label } of TABS) {
+    for (const { id, icon, label } of TABS()) {
       const tab = tabBar.createEl('button', { cls: 'col-settings-tab' });
       tab.createEl('span', { cls: 'col-settings-tab-icon', text: icon });
       tab.createEl('span', { cls: 'col-settings-tab-label', text: label });
@@ -78,13 +72,13 @@ export class CollectorsSettingTab extends PluginSettingTab {
   // ── General ───────────────────────────────────────────────────────────────────
 
   private buildGeneral(el: HTMLElement) {
-    this.sectionTitle(el, 'Collections');
+    this.sectionTitle(el, t('settings_section_collections'));
 
     new Setting(el)
-      .setName('Collections folder')
-      .setDesc('Folder to scan for .collection files. Leave empty to scan the entire vault.')
-      .addText(t =>
-        t.setPlaceholder('e.g. 004 MTG')
+      .setName(t('settings_folder'))
+      .setDesc(t('settings_folder_desc'))
+      .addText(tx =>
+        tx.setPlaceholder(t('settings_folder_ph'))
           .setValue(this.plugin.settings.collectionsFolder)
           .onChange(async v => {
             this.plugin.settings.collectionsFolder = v.trim();
@@ -96,18 +90,17 @@ export class CollectorsSettingTab extends PluginSettingTab {
   // ── MTG ───────────────────────────────────────────────────────────────────────
 
   private buildMTG(el: HTMLElement) {
-    // Ensure enabledGames exists
     if (!this.plugin.settings.enabledGames) {
       this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
     }
 
-    this.sectionTitle(el, 'Magic: The Gathering');
+    this.sectionTitle(el, t('settings_tab_mtg'));
 
     new Setting(el)
-      .setName('Enable Magic: The Gathering')
-      .setDesc('Show MTG as an option when creating new collections.')
-      .addToggle(t =>
-        t.setValue(this.plugin.settings.enabledGames['mtg'] ?? true)
+      .setName(t('settings_enable_game', { game: 'Magic: The Gathering' }))
+      .setDesc(t('settings_enable_game_desc'))
+      .addToggle(tx =>
+        tx.setValue(this.plugin.settings.enabledGames['mtg'] ?? true)
           .onChange(async v => {
             this.plugin.settings.enabledGames['mtg'] = v;
             await this.plugin.saveSettings();
@@ -115,11 +108,11 @@ export class CollectorsSettingTab extends PluginSettingTab {
       );
 
     // ── Card Data ────────────────────────────────────────────────────────────
-    this.sectionTitle(el, 'Card Data');
-    this.sectionDesc(el, 'Source used to fetch card lists and images.');
+    this.sectionTitle(el, t('settings_section_card_data'));
+    this.sectionDesc(el, t('settings_card_data_desc'));
 
     new Setting(el)
-      .setName('Source')
+      .setName(t('settings_source'))
       .addDropdown(d => {
         d.addOption('scryfall', 'Scryfall');
         d.setValue('scryfall');
@@ -127,8 +120,8 @@ export class CollectorsSettingTab extends PluginSettingTab {
       });
 
     // ── Prices ───────────────────────────────────────────────────────────────
-    this.sectionTitle(el, 'Prices');
-    this.sectionDesc(el, 'Choose where to fetch card prices. If a provider has no API key configured, Scryfall USD is used as fallback.');
+    this.sectionTitle(el, t('settings_section_prices'));
+    this.sectionDesc(el, t('settings_prices_desc'));
 
     const tcgSection = el.createDiv({ cls: 'col-settings-sub' });
     const cmSection  = el.createDiv({ cls: 'col-settings-sub' });
@@ -139,11 +132,12 @@ export class CollectorsSettingTab extends PluginSettingTab {
     };
 
     new Setting(el)
-      .setName('Provider')
+      .setName(t('settings_provider'))
       .addDropdown(d => {
-        for (const [val, label] of Object.entries(PRICE_SOURCE_LABELS)) {
-          d.addOption(val, label);
-        }
+        d.addOption('scryfall-usd', t('settings_price_scryfall_usd'));
+        d.addOption('scryfall-eur', t('settings_price_scryfall_eur'));
+        d.addOption('tcgplayer',    t('settings_price_tcgplayer'));
+        d.addOption('cardmarket',   t('settings_price_cardmarket'));
         d.setValue(this.plugin.settings.priceSource);
         updateVisibility(this.plugin.settings.priceSource);
         d.onChange(async v => {
@@ -154,13 +148,13 @@ export class CollectorsSettingTab extends PluginSettingTab {
       });
 
     // TCGPlayer
-    this.sectionTitle(tcgSection, 'TCGPlayer');
-    this.sectionDesc(tcgSection, 'Get your public API key at developer.tcgplayer.com. Uses market price (USD).');
+    this.sectionTitle(tcgSection, t('settings_section_tcgplayer'));
+    this.sectionDesc(tcgSection, t('settings_tcgplayer_desc'));
     new Setting(tcgSection)
-      .setName('Public API key')
-      .setDesc('Bearer token for TCGPlayer API v1.39.0.')
-      .addText(t =>
-        t.setPlaceholder('Paste your public key here')
+      .setName(t('settings_tcgplayer_key'))
+      .setDesc(t('settings_tcgplayer_key_desc'))
+      .addText(tx =>
+        tx.setPlaceholder(t('settings_tcgplayer_ph'))
           .setValue(this.plugin.settings.tcgplayerKey)
           .onChange(async v => {
             this.plugin.settings.tcgplayerKey = v.trim();
@@ -169,18 +163,18 @@ export class CollectorsSettingTab extends PluginSettingTab {
       );
 
     // Cardmarket
-    this.sectionTitle(cmSection, 'Cardmarket');
-    this.sectionDesc(cmSection, 'OAuth 1.0a credentials from your Cardmarket developer account. Uses TREND price (EUR).');
-    for (const [key, label, placeholder] of [
-      ['cardmarketAppToken',    'App token',           'App token'          ],
-      ['cardmarketAppSecret',   'App secret',          'App secret'         ],
-      ['cardmarketAccessToken', 'Access token',        'Access token'       ],
-      ['cardmarketAccessSecret','Access token secret', 'Access token secret'],
+    this.sectionTitle(cmSection, t('settings_section_cardmarket'));
+    this.sectionDesc(cmSection, t('settings_cardmarket_desc'));
+    for (const [key, labelKey, phKey] of [
+      ['cardmarketAppToken',    'settings_cm_app_token',    'settings_cm_app_token'    ],
+      ['cardmarketAppSecret',   'settings_cm_app_secret',   'settings_cm_app_secret'   ],
+      ['cardmarketAccessToken', 'settings_cm_access_token', 'settings_cm_access_token' ],
+      ['cardmarketAccessSecret','settings_cm_access_secret','settings_cm_access_secret'],
     ] as const) {
       new Setting(cmSection)
-        .setName(label)
-        .addText(t =>
-          t.setPlaceholder(placeholder)
+        .setName(t(labelKey))
+        .addText(tx =>
+          tx.setPlaceholder(t(phKey))
             .setValue((this.plugin.settings as any)[key])
             .onChange(async v => {
               (this.plugin.settings as any)[key] = v.trim();
@@ -200,26 +194,24 @@ export class CollectorsSettingTab extends PluginSettingTab {
     this.sectionTitle(el, `${icon}  ${label}`);
 
     new Setting(el)
-      .setName(`Enable ${label}`)
-      .setDesc('Show this game as an option when creating new collections.')
-      .addToggle(t =>
-        t.setValue(this.plugin.settings.enabledGames[game] ?? true)
+      .setName(t('settings_enable_game', { game: label }))
+      .setDesc(t('settings_enable_game_desc'))
+      .addToggle(tx =>
+        tx.setValue(this.plugin.settings.enabledGames[game] ?? true)
           .onChange(async v => {
             this.plugin.settings.enabledGames[game] = v;
             await this.plugin.saveSettings();
           })
       );
 
-    // Card Data
-    this.sectionTitle(el, 'Card Data');
+    this.sectionTitle(el, t('settings_section_card_data'));
     const cardBox = el.createDiv({ cls: 'col-settings-coming-soon' });
     cardBox.createEl('span', { cls: 'col-settings-coming-soon-icon', text: '🚧' });
-    cardBox.createEl('span', { text: `No card data source available for ${label} yet.` });
+    cardBox.createEl('span', { text: t('settings_no_card_data', { game: label }) });
 
-    // Prices
-    this.sectionTitle(el, 'Prices');
+    this.sectionTitle(el, t('settings_section_prices'));
     const priceBox = el.createDiv({ cls: 'col-settings-coming-soon' });
     priceBox.createEl('span', { cls: 'col-settings-coming-soon-icon', text: '🚧' });
-    priceBox.createEl('span', { text: `No price data available for ${label} yet.` });
+    priceBox.createEl('span', { text: t('settings_no_price_data', { game: label }) });
   }
 }

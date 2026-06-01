@@ -1,12 +1,13 @@
 import { Plugin, addIcon } from 'obsidian';
 import { DashboardView, DASHBOARD_VIEW_TYPE } from './DashboardView';
-
-const COLLECTORS_ICON = 'collectors-card';
 import { CollectionView, COLLECTION_VIEW_TYPE } from './CollectionView';
 import { NewCollectionModal } from './NewCollectionModal';
 import { CollectorsSettings, DEFAULT_SETTINGS } from './types';
 import { CollectorsSettingTab } from './settings';
 import { PriceService } from './PriceService';
+import { t } from './i18n';
+
+const COLLECTORS_ICON = 'collectors-card';
 
 export default class CollectorsPlugin extends Plugin {
   settings: CollectorsSettings = DEFAULT_SETTINGS;
@@ -29,17 +30,17 @@ export default class CollectorsPlugin extends Plugin {
 
     this.registerExtensions(['collection'], COLLECTION_VIEW_TYPE);
 
-    this.addRibbonIcon(COLLECTORS_ICON, 'Collectors Dashboard', () => this.activateDashboard());
+    this.addRibbonIcon(COLLECTORS_ICON, t('ribbon_dashboard'), () => this.activateDashboard());
 
     this.addCommand({
       id: 'open-dashboard',
-      name: 'Open Dashboard',
+      name: t('cmd_open_dashboard'),
       callback: () => this.activateDashboard(),
     });
 
     this.addCommand({
       id: 'new-collection',
-      name: 'New Collection',
+      name: t('cmd_new_collection'),
       callback: () => new NewCollectionModal(this.app, this, () => this.refreshDashboard()).open(),
     });
 

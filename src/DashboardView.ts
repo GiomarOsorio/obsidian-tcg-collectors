@@ -7,6 +7,7 @@ import { NewCollectionModal } from './NewCollectionModal';
 import {
   fetchSetCards, fetchSearchCards, cardToMarkdownRows,
 } from './ScryfallService';
+import { t } from './i18n';
 
 export const DASHBOARD_VIEW_TYPE = 'collectors-dashboard';
 
@@ -21,13 +22,12 @@ export class DashboardView extends ItemView {
   }
 
   getViewType() { return DASHBOARD_VIEW_TYPE; }
-  getDisplayText() { return 'Collectors'; }
-  getIcon() { return 'layout-grid'; }
+  getDisplayText() { return t('dashboard_title'); }
+  getIcon() { return 'collectors-card'; }
 
   async onOpen() {
     await this.refresh();
 
-    // Auto-refresh when any .collection file is created, modified, or deleted
     this.registerEvent(this.app.vault.on('create', f => {
       if (f instanceof TFile && f.extension === 'collection') this.refresh();
     }));
@@ -39,7 +39,6 @@ export class DashboardView extends ItemView {
       else if (old.endsWith('.collection')) this.refresh();
     }));
 
-    // Debounced modify — vault.modify fires multiple times during a save
     let modifyTimer: ReturnType<typeof setTimeout> | null = null;
     this.registerEvent(this.app.vault.on('modify', f => {
       if (!(f instanceof TFile) || f.extension !== 'collection') return;
@@ -146,20 +145,20 @@ export class DashboardView extends ItemView {
 
   private renderList(root: HTMLElement) {
     const header = root.createDiv({ cls: 'col-header col-header-stack' });
-    header.createEl('h2', { text: 'Collectors', cls: 'col-title' });
+    header.createEl('h2', { text: t('dashboard_title'), cls: 'col-title' });
 
     const actions = header.createDiv({ cls: 'col-actions' });
-    const refreshBtn = actions.createEl('button', { cls: 'col-btn-icon', attr: { title: 'Refresh' } });
+    const refreshBtn = actions.createEl('button', { cls: 'col-btn-icon', attr: { title: t('btn_refresh') } });
     refreshBtn.innerHTML = '↻';
     refreshBtn.addEventListener('click', () => this.refresh());
 
-    const newBtn = actions.createEl('button', { cls: 'col-btn', text: '+ New Collection' });
+    const newBtn = actions.createEl('button', { cls: 'col-btn', text: t('btn_new_collection') });
     newBtn.addEventListener('click', () =>
       new NewCollectionModal(this.app, this.plugin, () => this.refresh()).open()
     );
 
     if (this.collections.length === 0) {
-      root.createDiv({ cls: 'col-empty', text: 'No collections found. Create one or configure the folder in settings.' });
+      root.createDiv({ cls: 'col-empty', text: t('empty_no_collections') });
       return;
     }
 
@@ -168,8 +167,8 @@ export class DashboardView extends ItemView {
     const grouped = this.groupByType(this.collections);
     const order: CollectionType[] = ['mtg-set', 'mtg-theme'];
     const labels: Record<CollectionType, string> = {
-      'mtg-set':   'MTG Sets',
-      'mtg-theme': 'Theme Collections',
+      'mtg-set':   t('group_mtg_sets'),
+      'mtg-theme': t('group_theme'),
     };
 
     for (const type of order) {
@@ -215,10 +214,10 @@ export class DashboardView extends ItemView {
 
     const hero = root.createDiv({ cls: 'col-hero' });
 
-    this.statBox(hero, String(this.collections.length), 'Collections', '');
-    this.statBox(hero, `${totalOwned} / ${totalCards}`, 'Cards owned', 'col-hero-owned');
-    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : '…', `Invested · ${this.plugin.priceService.sourceLabel()}`, 'col-hero-money');
-    this.statBox(hero, pricesLoaded ? this.fmt(totalMissing) : '…', 'To complete', 'col-hero-missing');
+    this.statBox(hero, String(this.collections.length), t('stat_collections'), '');
+    this.statBox(hero, `${totalOwned} / ${totalCards}`, t('stat_cards_owned'), 'col-hero-owned');
+    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : '…', t('stat_invested', { source: this.plugin.priceService.sourceLabel() }), 'col-hero-money');
+    this.statBox(hero, pricesLoaded ? this.fmt(totalMissing) : '…', t('stat_to_complete'), 'col-hero-missing');
   }
 
   private statBox(container: HTMLElement, value: string, label: string, mod: string) {
@@ -234,7 +233,6 @@ export class DashboardView extends ItemView {
 
     const card = container.createDiv({ cls: 'col-card' });
 
-    // Thumbnail — first card with an image
     const thumb = card.createDiv({ cls: 'col-card-thumb' });
     const thumbCard = coll.cards.find(c => c.imageUrl);
     if (thumbCard?.imageUrl) {
@@ -252,7 +250,7 @@ export class DashboardView extends ItemView {
     const nameRow = info.createDiv({ cls: 'col-card-name-row' });
     nameRow.createEl('span', { cls: 'col-card-name', text: coll.name });
     if (coll.setCode) nameRow.createEl('span', { cls: 'col-badge', text: coll.setCode });
-    if (coll.format === 'arena') nameRow.createEl('span', { cls: 'col-badge col-badge-arena', text: 'Arena' });
+    if (coll.format === 'arena') nameRow.createEl('span', { cls: 'col-badge col-badge-arena', text: t('badge_arena') });
 
     const progressWrap = info.createDiv({ cls: 'col-progress-wrap' });
     const bar = progressWrap.createDiv({ cls: 'col-progress-bar' });
@@ -260,34 +258,34 @@ export class DashboardView extends ItemView {
     progressWrap.createEl('span', { cls: 'col-pct', text: `${pct}%` });
 
     const stats = info.createDiv({ cls: 'col-stats' });
-    stats.createEl('span', { cls: 'col-stat-owned', text: `${coll.owned} owned` });
+    stats.createEl('span', { cls: 'col-stat-owned', text: t('card_owned_count', { count: coll.owned }) });
     stats.createEl('span', { cls: 'col-dot', text: '·' });
-    stats.createEl('span', { text: `${coll.total} total` });
+    stats.createEl('span', { text: t('card_total_count', { count: coll.total }) });
     if (missing > 0) {
       stats.createEl('span', { cls: 'col-dot', text: '·' });
-      stats.createEl('span', { cls: 'col-stat-missing', text: `${missing} missing` });
+      stats.createEl('span', { cls: 'col-stat-missing', text: t('card_missing_count', { count: missing }) });
     }
 
     if (pricesLoaded) {
       const priceRow = info.createDiv({ cls: 'col-price-row' });
-      priceRow.createEl('span', { cls: 'col-price-invested', text: `${this.fmt(ownedVal)} invested` });
+      priceRow.createEl('span', { cls: 'col-price-invested', text: t('card_invested', { value: this.fmt(ownedVal) }) });
       if (missingVal > 0) {
         priceRow.createEl('span', { cls: 'col-dot', text: '·' });
-        priceRow.createEl('span', { cls: 'col-price-missing', text: `${this.fmt(missingVal)} to complete` });
+        priceRow.createEl('span', { cls: 'col-price-missing', text: t('card_to_complete', { value: this.fmt(missingVal) }) });
       }
     }
 
     const cardActions = info.createDiv({ cls: 'col-card-actions' });
 
-    const detailBtn = cardActions.createEl('button', { cls: 'col-btn col-btn-view', attr: { title: 'View cards' } });
-    detailBtn.innerHTML = '⊞ View';
+    const detailBtn = cardActions.createEl('button', { cls: 'col-btn col-btn-view', attr: { title: t('btn_view_title') } });
+    detailBtn.innerHTML = t('btn_view');
     detailBtn.addEventListener('click', () => {
       const file = this.app.vault.getAbstractFileByPath(coll.path);
       if (file instanceof TFile) this.app.workspace.getLeaf('tab').openFile(file);
     });
 
     if (coll.setCode || coll.scryfallQuery) {
-      const updateBtn = cardActions.createEl('button', { cls: 'col-btn-icon', attr: { title: 'Update from Scryfall' } });
+      const updateBtn = cardActions.createEl('button', { cls: 'col-btn-icon', attr: { title: t('btn_update_scryfall') } });
       updateBtn.innerHTML = '⟳';
       updateBtn.addEventListener('click', async () => {
         updateBtn.disabled = true;
@@ -296,7 +294,7 @@ export class DashboardView extends ItemView {
       });
     }
 
-    const editBtn = cardActions.createEl('button', { cls: 'col-btn-icon', attr: { title: 'Edit collection' } });
+    const editBtn = cardActions.createEl('button', { cls: 'col-btn-icon', attr: { title: t('btn_edit_collection') } });
     editBtn.innerHTML = '✎';
     editBtn.addEventListener('click', () => {
       const file = this.app.vault.getAbstractFileByPath(coll.path);
@@ -308,13 +306,13 @@ export class DashboardView extends ItemView {
   // ── Scryfall update ───────────────────────────────────────────────────────────
 
   private async updateFromScryfall(coll: Collection, silent = false): Promise<number> {
-    if (!silent) new Notice(`Fetching cards for "${coll.name}"...`);
+    if (!silent) new Notice(t('notice_fetching_for', { name: coll.name }));
     try {
       const finish = coll.finishImport ?? 'all';
       const unique  = coll.allPrints === false ? 'cards' : 'prints';
 
-      const onPage = (p: number) => { if (!silent) new Notice(`Fetching page ${p}...`); };
-      const onRateLimit = (s: number) => new Notice(`⏳ Scryfall rate limit hit — waiting ${s}s before retrying.`, s * 1000);
+      const onPage = (p: number) => { if (!silent) new Notice(t('notice_fetching_page', { page: p })); };
+      const onRateLimit = (s: number) => new Notice(t('notice_rate_limit', { seconds: s }), s * 1000);
 
       const rawCards = coll.setCode
         ? await fetchSetCards(coll.setCode, onPage, unique, onRateLimit)
@@ -341,15 +339,15 @@ export class DashboardView extends ItemView {
 
       if (!silent) {
         new Notice(added > 0
-          ? `Added ${added} new cards to "${coll.name}".`
-          : `"${coll.name}" is already up to date.`
+          ? t('notice_cards_added', { count: added, name: coll.name })
+          : t('notice_up_to_date', { name: coll.name })
         );
       } else if (added > 0) {
-        new Notice(`Auto-update: added ${added} new cards to "${coll.name}".`);
+        new Notice(t('notice_auto_updated', { count: added, name: coll.name }));
       }
       return added;
     } catch (e) {
-      if (!silent) new Notice(`Scryfall update failed: ${(e as Error).message}`);
+      if (!silent) new Notice(t('notice_scryfall_failed', { error: (e as Error).message }));
       return 0;
     }
   }
