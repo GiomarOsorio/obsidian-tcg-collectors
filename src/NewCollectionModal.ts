@@ -262,7 +262,7 @@ export class NewCollectionModal extends Modal {
     }
 
     const folder = this.plugin.settings.collectionsFolder;
-    const filename = this.name.replace(/[\\/:*?"<>|]/g, '-') + '.md';
+    const filename = this.name.replace(/[\\/:*?"<>|]/g, '-') + '.collection';
     const path = normalizePath(folder ? `${folder}/${filename}` : filename);
 
     if (this.app.vault.getAbstractFileByPath(path) instanceof TFile) {

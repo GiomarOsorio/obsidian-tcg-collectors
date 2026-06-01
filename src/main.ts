@@ -17,6 +17,7 @@ export default class CollectorsPlugin extends Plugin {
     this.priceService = new PriceService(this.settings);
 
     this.registerView(DASHBOARD_VIEW_TYPE, leaf => new DashboardView(leaf, this));
+    this.registerExtensions(['collection'], 'markdown');
 
     this.addRibbonIcon('layout-grid', 'Collectors Dashboard', () => this.activateDashboard());
 

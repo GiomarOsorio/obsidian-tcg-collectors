@@ -665,7 +665,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
       return;
     }
     const folder = this.plugin.settings.collectionsFolder;
-    const filename = this.name.replace(/[\\/:*?"<>|]/g, "-") + ".md";
+    const filename = this.name.replace(/[\\/:*?"<>|]/g, "-") + ".collection";
     const path = (0, import_obsidian2.normalizePath)(folder ? `${folder}/${filename}` : filename);
     if (this.app.vault.getAbstractFileByPath(path) instanceof import_obsidian2.TFile) {
       new import_obsidian2.Notice(`File already exists: ${path}`);
@@ -991,13 +991,13 @@ var DashboardView = class extends import_obsidian5.ItemView {
       const abs = vault.getAbstractFileByPath(folder);
       if (abs && "children" in abs) {
         files = abs.children.filter(
-          (f) => f instanceof import_obsidian5.TFile && f.extension === "md"
+          (f) => f instanceof import_obsidian5.TFile && f.extension === "collection"
         );
       } else {
-        files = vault.getMarkdownFiles();
+        files = vault.getFiles().filter((f) => f.extension === "collection");
       }
     } else {
-      files = vault.getMarkdownFiles();
+      files = vault.getFiles().filter((f) => f.extension === "collection");
     }
     const results = await Promise.all(
       files.map((f) => parseCollectionFile(f, vault))
@@ -1360,10 +1360,13 @@ var DashboardView = class extends import_obsidian5.ItemView {
       cls: `col-tile-count${card.count > 0 ? " col-tile-count-owned" : ""}`,
       text: `\xD7${card.count}`
     });
-    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number) ? this.cardPrice(card) : null;
+    const isCached = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number);
+    const p = isCached ? this.cardPrice(card) : void 0;
     const priceEl = tileFooter.createEl("span", { cls: "col-tile-price" });
     if (typeof p === "number") {
       priceEl.textContent = this.fmt(p);
+    } else if (!isCached) {
+      priceEl.addClass("col-tile-price-loading");
     } else {
       priceEl.textContent = "\u2014";
       priceEl.addClass("col-tile-price-empty");
@@ -1801,6 +1804,7 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
     await this.loadSettings();
     this.priceService = new PriceService(this.settings);
     this.registerView(DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this));
+    this.registerExtensions(["collection"], "markdown");
     this.addRibbonIcon("layout-grid", "Collectors Dashboard", () => this.activateDashboard());
     this.addCommand({
       id: "open-dashboard",

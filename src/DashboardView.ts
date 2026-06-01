@@ -119,13 +119,13 @@ export class DashboardView extends ItemView {
       const abs = vault.getAbstractFileByPath(folder);
       if (abs && 'children' in abs) {
         files = (abs as any).children.filter(
-          (f: any) => f instanceof TFile && f.extension === 'md'
+          (f: any) => f instanceof TFile && f.extension === 'collection'
         );
       } else {
-        files = vault.getMarkdownFiles();
+        files = vault.getFiles().filter(f => f.extension === 'collection');
       }
     } else {
-      files = vault.getMarkdownFiles();
+      files = vault.getFiles().filter(f => f.extension === 'collection');
     }
 
     const results = await Promise.all(
@@ -561,12 +561,13 @@ export class DashboardView extends ItemView {
       text: `×${card.count}`,
     });
 
-    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)
-      ? this.cardPrice(card)
-      : null;
+    const isCached = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number);
+    const p = isCached ? this.cardPrice(card) : undefined;
     const priceEl = tileFooter.createEl('span', { cls: 'col-tile-price' });
     if (typeof p === 'number') {
       priceEl.textContent = this.fmt(p);
+    } else if (!isCached) {
+      priceEl.addClass('col-tile-price-loading');
     } else {
       priceEl.textContent = '—';
       priceEl.addClass('col-tile-price-empty');
