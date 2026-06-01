@@ -29,6 +29,18 @@ var import_obsidian5 = require("obsidian");
 
 // src/parser.ts
 var CHECKBOX_PATTERN = /<input type="checkbox"/;
+function yamlStr(s) {
+  if (/[:#\[\]{},]/.test(s) || s.startsWith('"') || s.startsWith("'")) {
+    return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return s;
+}
+function unquoteYaml(s) {
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  return s;
+}
 async function parseCollectionFile(file, vault) {
   const content = await vault.read(file);
   let collectionType = "custom";
@@ -46,7 +58,7 @@ async function parseCollectionFile(file, vault) {
     const fmLines = fmMatch[1].split("\n");
     for (const line of fmLines) {
       const [key, ...rest] = line.split(":");
-      const val = rest.join(":").trim();
+      const val = unquoteYaml(rest.join(":").trim());
       switch (key.trim()) {
         case "collection-type":
           collectionType = val;
@@ -223,10 +235,11 @@ async function patchFrontmatter(file, key, value, vault) {
   const endIdx = lines.findIndex((l, i) => i > 0 && l === "---");
   if (endIdx === -1) return;
   const existing = lines.findIndex((l) => l.trimStart().startsWith(`${key}:`));
+  const serialized = `${key}: ${yamlStr(value)}`;
   if (existing !== -1 && existing < endIdx) {
-    lines[existing] = `${key}: ${value}`;
+    lines[existing] = serialized;
   } else {
-    lines.splice(endIdx, 0, `${key}: ${value}`);
+    lines.splice(endIdx, 0, serialized);
   }
   await vault.modify(file, lines.join("\n"));
 }
@@ -678,7 +691,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
       `cssclasses: collectors-file`,
       `plugin-version: ${this.plugin.manifest.version}`,
       `collection-type: ${this.type}`,
-      `collection-name: ${this.name}`,
+      `collection-name: ${yamlStr(this.name)}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : "",
       isSet ? `finish-import: ${this.finishImport}` : "",
       isSet ? `all-prints: ${this.allPrints}` : "",
