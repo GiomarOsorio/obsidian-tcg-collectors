@@ -26,6 +26,8 @@ Track your TCG card collections (Magic: The Gathering and more) directly in Obsi
 
 > This plugin is not yet in the Obsidian community registry. Install manually.
 
+### Desktop
+
 1. Clone or download this repo:
    ```bash
    git clone https://github.com/giosorio30/obsidian-tcg-collectors
@@ -42,6 +44,41 @@ Track your TCG card collections (Magic: The Gathering and more) directly in Obsi
      "/path/to/Your Vault/.obsidian/plugins/collectors-plugin"
    ```
 4. In Obsidian → **Settings → Community Plugins** → disable Safe Mode → enable **Collectors**.
+
+### Mobile (iOS / Android)
+
+Obsidian mobile can't install plugins from a terminal, but it can load any plugin files placed in the vault. Only three files are needed: `main.js`, `manifest.json`, and `styles.css`.
+
+**Option A — Cloud sync (recommended if you already use iCloud / Obsidian Sync / Dropbox)**
+
+1. Build the plugin on your desktop (see above).
+2. Copy the three files into your vault's plugin folder on the synced drive:
+   ```
+   <Your Vault>/.obsidian/plugins/collectors-plugin/main.js
+   <Your Vault>/.obsidian/plugins/collectors-plugin/manifest.json
+   <Your Vault>/.obsidian/plugins/collectors-plugin/styles.css
+   ```
+3. Wait for sync to complete on the mobile device.
+4. In Obsidian mobile → **Settings → Community Plugins** → enable **Collectors**.
+
+**Option B — Direct file transfer (no cloud sync)**
+
+*iOS:*
+1. Build on desktop and locate the three plugin files.
+2. Open the **Files** app on your iPhone/iPad.
+3. Navigate to your vault folder → `.obsidian` → `plugins` → create a folder named `collectors-plugin`.
+4. AirDrop or copy the three files into that folder.
+5. Enable the plugin in Obsidian settings.
+
+*Android:*
+1. Build on desktop and transfer the three files via USB, Google Drive, or any file manager.
+2. Place them at:
+   ```
+   <Your Vault>/.obsidian/plugins/collectors-plugin/
+   ```
+3. Enable the plugin in Obsidian settings.
+
+> **Note:** Every time you update the plugin (new build), repeat the file copy step and reload the plugin in Obsidian (toggle off → on, or restart the app).
 
 ---
 
@@ -181,28 +218,83 @@ Scryfall rate limit: 2 requests/second. The plugin waits 500ms between paginated
 
 ## Development
 
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18 or later
+- npm (comes with Node.js)
+- An Obsidian vault for testing
+
+### Setup
+
 ```bash
-npm install      # install dependencies
-npm run dev      # watch mode (rebuilds on save)
-npm run build    # production build
+# 1. Clone the repo
+git clone https://github.com/giosorio30/obsidian-tcg-collectors
+cd obsidian-tcg-collectors
+
+# 2. Install dependencies
+npm install
+
+# 3. Symlink the repo into your vault's plugin folder
+#    so Obsidian picks up the built files automatically
+ln -s "$(pwd)" "/path/to/Your Vault/.obsidian/plugins/collectors-plugin"
 ```
 
-After rebuilding, reload the plugin in Obsidian: Settings → Community Plugins → Collectors → toggle off/on.
+Replace `/path/to/Your Vault` with the actual path to your Obsidian vault.  
+On macOS the vault is usually inside `~/Documents` or `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/`.
+
+### Development workflow
+
+```bash
+npm run dev    # watch mode — rebuilds main.js on every file save
+```
+
+After each rebuild, reload the plugin in Obsidian without restarting the app:
+
+1. Open **Settings → Community Plugins**
+2. Toggle **Collectors** off, then back on
+
+Or use the Obsidian command palette (`Cmd/Ctrl + P`) → **Reload app without saving**.
+
+### Production build
+
+```bash
+npm run build   # type-check + minified bundle
+```
+
+Output files (copy these three to deploy anywhere):
+- `main.js` — compiled plugin bundle
+- `manifest.json` — plugin metadata
+- `styles.css` — all styles
+
+### Branching
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable releases |
+| `dev`  | Integration branch — merge feature branches here first |
+| `feature/*` | New features |
+| `fix/*` | Bug fixes |
+
+Open PRs against `dev`, not `main`.
 
 ### Project Structure
 
 ```
 src/
-  main.ts               # Plugin entry, commands, ribbon
-  types.ts              # TypeScript interfaces
-  parser.ts             # Markdown table parser, appendCards, toggleCardOwned
-  ScryfallService.ts    # Scryfall API, price cache, pagination
+  main.ts               # Plugin entry, commands, ribbon, MarkdownPostProcessor
+  types.ts              # TypeScript interfaces and default settings
+  parser.ts             # .collection file parser, appendCards, toggleCardOwned
+  ScryfallService.ts    # Scryfall API client, price/set cache, pagination
+  PriceService.ts       # Multi-provider price layer (Scryfall, TCGPlayer, Cardmarket)
   DashboardView.ts      # Main view: list + detail screens, hero stats, prices
-  NewCollectionModal.ts # Create collection + optional Scryfall auto-fetch
-  CardSearchModal.ts    # Search cards, browse printings, add to collection
+  NewCollectionModal.ts # Create collection wizard + Scryfall auto-fetch
+  CardSearchModal.ts    # Search cards by name, browse printings, add to collection
+  CardZoomModal.ts      # Full-screen card zoom with holographic foil effect
+  migrations.ts         # Schema migration helpers (run on dashboard open)
   settings.ts           # Settings tab
 styles.css              # All CSS (adapts to Obsidian light/dark theme)
-manifest.json           # Plugin manifest
+manifest.json           # Plugin manifest (id, version, minAppVersion)
+versions.json           # Version compatibility map
 ```
 
 ---
@@ -236,6 +328,8 @@ Rastrea tus colecciones de TCG (Magic: The Gathering y más) directamente en Obs
 
 ## Instalación
 
+### Escritorio
+
 1. Clona o descarga este repositorio:
    ```bash
    git clone https://github.com/giosorio30/obsidian-tcg-collectors
@@ -246,12 +340,53 @@ Rastrea tus colecciones de TCG (Magic: The Gathering y más) directamente en Obs
    npm install
    npm run build
    ```
-3. Copia o crea un symlink en el directorio de plugins de tu vault:
+3. Crea un symlink en la carpeta de plugins del vault:
    ```bash
    ln -s /ruta/al/obsidian-tcg-collectors \
      "/ruta/a/Tu Vault/.obsidian/plugins/collectors-plugin"
    ```
 4. En Obsidian → **Ajustes → Plugins de la comunidad** → desactiva Modo seguro → activa **Collectors**.
+
+### Móvil (iOS / Android)
+
+Solo necesitas tres archivos: `main.js`, `manifest.json` y `styles.css`.
+
+**Opción A — Sincronización en la nube (iCloud / Obsidian Sync / Dropbox)**
+
+1. Compila en tu computador.
+2. Copia los tres archivos a la carpeta de plugins del vault sincronizado:
+   ```
+   <Tu Vault>/.obsidian/plugins/collectors-plugin/main.js
+   <Tu Vault>/.obsidian/plugins/collectors-plugin/manifest.json
+   <Tu Vault>/.obsidian/plugins/collectors-plugin/styles.css
+   ```
+3. Espera a que sincronice en el celular.
+4. En Obsidian móvil → **Ajustes → Plugins de la comunidad** → activa **Collectors**.
+
+**Opción B — Transferencia directa (sin nube)**
+
+*iOS:*
+1. Abre la app **Archivos** en el iPhone/iPad.
+2. Navega a tu vault → `.obsidian` → `plugins` → crea la carpeta `collectors-plugin`.
+3. Copia los tres archivos vía AirDrop o la app Archivos.
+4. Activa el plugin en Obsidian.
+
+*Android:*
+1. Transfiere los archivos por USB, Google Drive o cualquier gestor de archivos.
+2. Colócalos en `<Tu Vault>/.obsidian/plugins/collectors-plugin/`.
+3. Activa el plugin en Obsidian.
+
+> **Nota:** Cada vez que actualices el plugin (nueva compilación), repite la copia de archivos y recarga el plugin en Obsidian (apagar → encender, o reiniciar la app).
+
+### Desarrollo local
+
+```bash
+npm install     # instalar dependencias
+npm run dev     # modo watch — recompila al guardar
+npm run build   # build de producción
+```
+
+Después de cada build, recarga el plugin en Obsidian: **Ajustes → Plugins de la comunidad** → apaga y enciende **Collectors**.
 
 ---
 
