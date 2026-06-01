@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
 import { CollectionFormat, CollectionType, type TCGGame, type Collection } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
-import { appendCards, patchFrontmatter, replaceFrontmatter, yamlStr } from './parser';
+import { appendCards, patchFrontmatter, replaceFrontmatter, yamlStr, extractOwnedMap, clearCardRows, applyOwnedStates } from './parser';
 
 interface GameConfig {
   label: string;
@@ -46,9 +46,8 @@ const GAMES: Record<TCGGame, GameConfig> = {
 const GAME_ORDER: TCGGame[] = ['mtg', 'pokemon', 'onepiece', 'yugioh'];
 
 const TYPE_LABELS: Record<CollectionType, string> = {
-  'mtg-set': 'MTG Set / Product',
+  'mtg-set':   'MTG Set / Product',
   'mtg-theme': 'MTG Theme Collection',
-  'custom': 'Custom Collection',
 };
 
 const TABLE_HEADERS: Record<CollectionType, string> = {
@@ -57,9 +56,6 @@ const TABLE_HEADERS: Record<CollectionType, string> = {
     '| --- | --- | --- | --- | --- | --- | --- | --- |',
   'mtg-theme':
     '| In Collection | Image | Name | Type | Rarity | Set | Number | Notes |\n' +
-    '| --- | --- | --- | --- | --- | --- | --- | --- |',
-  'custom':
-    '| In Collection | Image | Name | Type | Category | Set | Number | Notes |\n' +
     '| --- | --- | --- | --- | --- | --- | --- | --- |',
 };
 
@@ -217,6 +213,11 @@ export class NewCollectionModal extends Modal {
         t.setPlaceholder('Query: type:turtle game:paper\n\nURL: https://scryfall.com/search?q=...');
         t.inputEl.rows = 3;
         t.inputEl.addClass('nm-query-input');
+        if (this.scryfallQuery) {
+          t.setValue(this.scryfallQuery);
+          previewEl.textContent = `Query: ${this.scryfallQuery}`;
+          previewEl.style.display = '';
+        }
         t.onChange(raw => {
           const parsed = parseScryfallInput(raw);
           this.scryfallQuery = parsed.query;
@@ -231,10 +232,24 @@ export class NewCollectionModal extends Modal {
     // move preview below the textarea
     queryWrap.appendChild(previewEl);
 
+    let refetchWarning: HTMLElement | null = null;
+
     const autoFetchSetting = new Setting(el)
-      .setName('Auto-fetch cards from Scryfall')
-      .setDesc('Populate collection with cards from Scryfall after creation.')
-      .addToggle(t => t.setValue(this.autoFetch).onChange(v => (this.autoFetch = v)));
+      .setName(this.editTarget ? 'Re-fetch cards from Scryfall' : 'Auto-fetch cards from Scryfall')
+      .setDesc(this.editTarget
+        ? 'Replace all cards with a fresh import. Use when the query or set code changed.'
+        : 'Populate collection with cards from Scryfall after creation.'
+      )
+      .addToggle(t => t.setValue(this.autoFetch).onChange(v => {
+        this.autoFetch = v;
+        if (refetchWarning) refetchWarning.style.display = v ? '' : 'none';
+      }));
+
+    if (this.editTarget) {
+      refetchWarning = el.createDiv({ cls: 'ncm-refetch-warning' });
+      refetchWarning.style.display = this.autoFetch ? '' : 'none';
+      refetchWarning.setText('⚠ All cards will be replaced by the new Scryfall results. Previously owned cards matching the new query will have their status preserved.');
+    }
 
     const autoUpdateSetting = new Setting(el)
       .setName('Auto-update')
@@ -249,15 +264,18 @@ export class NewCollectionModal extends Modal {
           d.addOption(val, label);
         }
         d.setValue(this.type);
-        d.onChange(v => {
-          this.type = v as CollectionType;
-          const isSet = this.type === 'mtg-set';
-          setCodeSetting.settingEl.style.display    = isSet ? '' : 'none';
-          finishSetting.settingEl.style.display      = isSet ? '' : 'none';
-          allPrintsSetting.settingEl.style.display   = isSet ? '' : 'none';
-          queryWrap.style.display                    = isSet ? 'none' : '';
-          autoUpdateSetting.settingEl.style.display  = isSet ? 'none' : '';
-        });
+
+        const applyVisibility = (type: CollectionType) => {
+          const isSet = type === 'mtg-set';
+          setCodeSetting.settingEl.style.display   = isSet ? '' : 'none';
+          finishSetting.settingEl.style.display     = isSet ? '' : 'none';
+          allPrintsSetting.settingEl.style.display  = isSet ? '' : 'none';
+          queryWrap.style.display                   = isSet ? 'none' : '';
+          autoUpdateSetting.settingEl.style.display = isSet ? 'none' : '';
+        };
+
+        applyVisibility(this.type);
+        d.onChange(v => { this.type = v as CollectionType; applyVisibility(this.type); });
       });
 
     new Setting(el)
@@ -303,42 +321,77 @@ export class NewCollectionModal extends Modal {
     const { file } = this.editTarget!;
     const isSet = this.type === 'mtg-set';
 
+    const fmLines = [
+      '---',
+      `cssclasses: collectors-file`,
+      `plugin-version: ${this.plugin.manifest.version}`,
+      `collection-type: ${this.type}`,
+      `collection-format: ${this.format}`,
+      `collection-name: ${yamlStr(this.name)}`,
+      isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : '',
+      isSet ? `finish-import: ${this.finishImport}` : '',
+      isSet ? `all-prints: ${this.allPrints}` : '',
+      !isSet && this.scryfallQuery ? `scryfall-query: ${this.scryfallQuery}` : '',
+      !isSet && this.scryfallOrder && this.scryfallOrder !== 'released' ? `scryfall-order: ${this.scryfallOrder}` : '',
+      this.autoUpdate ? 'auto-update: true' : '',
+      '---',
+    ].filter(Boolean);
+
     try {
-      await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-        fm['cssclasses']        = 'collectors-file';
-        fm['plugin-version']    = this.plugin.manifest.version;
-        fm['collection-type']   = this.type;
-        fm['collection-format'] = this.format;
-        fm['collection-name']   = this.name;
-
-        if (isSet && this.setCode) fm['set-code'] = this.setCode.toUpperCase();
-        else delete fm['set-code'];
-
-        if (isSet) {
-          fm['finish-import'] = this.finishImport;
-          fm['all-prints']    = this.allPrints;
-        } else {
-          delete fm['finish-import'];
-          delete fm['all-prints'];
-        }
-
-        if (!isSet && this.scryfallQuery) fm['scryfall-query'] = this.scryfallQuery;
-        else delete fm['scryfall-query'];
-
-        if (!isSet && this.scryfallOrder && this.scryfallOrder !== 'released') fm['scryfall-order'] = this.scryfallOrder;
-        else delete fm['scryfall-order'];
-
-        if (this.autoUpdate) fm['auto-update'] = true;
-        else delete fm['auto-update'];
-      });
-
+      await replaceFrontmatter(file, fmLines, this.app.vault);
+      new Notice('Collection saved.');
       this.close();
       if (this.autoFetch && (isSet ? !!this.setCode : !!this.scryfallQuery)) {
-        await this.fetchAndPopulate(file, isSet);
+        await this.refetchWithPreservation(file, isSet);
       }
       this.onCreated();
     } catch (e) {
       new Notice(`Failed to save: ${(e as Error).message}`);
+    }
+  }
+
+  // ── Re-fetch with ownership preservation (edit mode) ────────────────────────
+
+  private async refetchWithPreservation(file: TFile, isSet: boolean) {
+    const content = await this.app.vault.read(file);
+    const previousOwned = extractOwnedMap(content);
+
+    new Notice('Fetching cards from Scryfall...');
+    try {
+      const cards = isSet
+        ? await fetchSetCards(
+            this.setCode,
+            p => new Notice(`Fetching page ${p}...`),
+            this.allPrints ? 'prints' : 'cards'
+          )
+        : await fetchSearchCards(
+            this.scryfallQuery,
+            p => new Notice(`Fetching page ${p}...`),
+            this.scryfallOrder
+          );
+
+      const finish = this.finishImport;
+      const rawRows = cards.flatMap(card => {
+        if (finish === 'all') return cardToMarkdownRows(card);
+        const filtered = { ...card, finishes: card.finishes.filter(f => f === finish) };
+        return cardToMarkdownRows(filtered);
+      });
+
+      const restoredRows = applyOwnedStates(rawRows, previousOwned);
+      const preservedCount = restoredRows.filter((r, i) => r !== rawRows[i]).length;
+
+      await clearCardRows(file, this.app.vault);
+      await appendCards(file, restoredRows, this.app.vault);
+
+      const today = new Date().toISOString().slice(0, 10);
+      await patchFrontmatter(file, 'last-fetched', today, this.app.vault);
+
+      const msg = previousOwned.size > 0
+        ? `Re-imported ${restoredRows.length} cards. ${preservedCount}/${previousOwned.size} owned entries preserved.`
+        : `Re-imported ${restoredRows.length} cards.`;
+      new Notice(msg);
+    } catch (e) {
+      new Notice(`Scryfall fetch failed: ${(e as Error).message}`);
     }
   }
 

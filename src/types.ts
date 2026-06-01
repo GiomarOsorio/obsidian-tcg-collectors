@@ -11,7 +11,7 @@ export interface CollectionCard {
   notes: string;
 }
 
-export type CollectionType = 'mtg-set' | 'mtg-theme' | 'custom';
+export type CollectionType = 'mtg-set' | 'mtg-theme';
 export type CollectionFormat = 'paper' | 'arena';
 
 export interface Collection {
@@ -41,7 +41,6 @@ export type TCGGame = 'mtg' | 'pokemon' | 'onepiece' | 'yugioh';
 export interface CollectorsSettings {
   collectionsFolder: string;
   autoDetect: boolean;
-  cardViewInFiles: boolean;
   priceSource: PriceSource;
   tcgplayerKey: string;
   cardmarketAppToken: string;
@@ -54,7 +53,6 @@ export interface CollectorsSettings {
 export const DEFAULT_SETTINGS: CollectorsSettings = {
   collectionsFolder: '',
   autoDetect: true,
-  cardViewInFiles: true,
   priceSource: 'scryfall-usd',
   tcgplayerKey: '',
   cardmarketAppToken: '',

@@ -59,10 +59,8 @@
   font-size: 0.82em;
   cursor: pointer;
   font-weight: 600;
-  transition: opacity 0.15s;
   white-space: nowrap;
 }
-.col-btn:hover { opacity: 0.85; }
 
 .col-btn-view {
   font-size: 0.78em;
@@ -77,13 +75,9 @@
   cursor: pointer;
   font-size: 0.9em;
   color: var(--text-muted);
-  transition: background 0.15s, color 0.15s;
   line-height: 1;
 }
-.col-btn-icon:hover {
-  background: var(--background-modifier-active-hover);
-  color: var(--text-normal);
-}
+
 
 /* ── Hero stats ─────────────────────────────────────────────────────────────── */
 .col-hero {
@@ -100,7 +94,6 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  transition: border-color 0.2s;
 }
 
 .col-hero-box.col-hero-owned  { border-left: 3px solid var(--color-green, #4caf50); }
@@ -132,7 +125,17 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
 }
+.col-section-chevron {
+  font-size: 0.75em;
+  opacity: 0.6;
+}
+.col-section-collapsed .col-collection-grid { display: none; }
 
 /* ── Collection grid ─────────────────────────────────────────────────────────── */
 .col-collection-grid {
@@ -149,12 +152,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: row;
-  transition: border-color 0.15s, box-shadow 0.15s;
   cursor: default;
-}
-.col-card:hover {
-  border-color: var(--interactive-accent);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
 }
 
 .col-card-thumb {
@@ -353,10 +351,8 @@
   font-size: 0.8em;
   cursor: pointer;
   color: var(--text-muted);
-  transition: background 0.15s, color 0.15s;
   font-weight: 500;
 }
-.col-tab:hover { color: var(--text-normal); }
 .col-tab-active {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
@@ -425,13 +421,10 @@
   overflow: hidden;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
-  transition: transform 0.18s ease;
   cursor: pointer;
 }
-.col-tile:hover { transform: translateY(-3px) scale(1.05); }
 .col-tile img,
 .col-tile .col-tile-img { cursor: pointer !important; }
-.col-tile-owned { border-color: var(--color-green, #4caf50); }
 
 
 /* ── Foil shimmer ──────────────────────────────────────────────────────────────── */
@@ -623,8 +616,8 @@
 /* ── Settings tab ────────────────────────────────────────────────────────────── */
 .col-settings .col-settings-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  padding: 4px;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -639,9 +632,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1;
-  justify-content: center;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 6px;
   border: none;
   background: var(--background-secondary-alt);
@@ -649,6 +640,7 @@
   cursor: pointer;
   font-size: 13px;
   transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
 }
 
 .col-settings .col-settings-tab:hover {
@@ -667,6 +659,7 @@
 .col-settings .col-settings-pane { display: none; }
 .col-settings .col-settings-pane.col-settings-pane-active { display: block; }
 
+.col-settings .col-settings-section-title,
 .col-settings .col-settings-panel-title {
   font-size: 11px;
   font-weight: 600;
@@ -687,6 +680,22 @@
 
 .col-settings .col-settings-sub { display: none; }
 .col-settings .col-settings-sub.col-settings-sub-active { display: block; }
+
+.col-settings .col-settings-coming-soon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 4px 0 16px;
+}
+
+.col-settings .col-settings-coming-soon-icon {
+  font-size: 1.1em;
+}
 
 /* ── New Collection Modal — game tabs ────────────────────────────────────────── */
 .ncm-modal .modal-content { padding: 0; overflow: hidden; }
@@ -1061,4 +1070,69 @@
 
 .col-zoom-foil .col-zoom-glare {
   display: none;
+}
+
+/* ── File view: card grid inside .collection files ────────────────────────────── */
+.col-file-view {
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Hero inside file view doesn't have the dashboard container query */
+.col-file-hero {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+
+/* ── Re-fetch warning in Edit Collection modal ────────────────────────────────── */
+.ncm-refetch-warning {
+  margin: 2px 0 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid var(--color-orange, #ff9800);
+  background: rgba(255, 152, 0, 0.08);
+  font-size: 0.8em;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ── Collection view loading overlay ─────────────────────────────────────────── */
+.col-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  backdrop-filter: blur(4px);
+  background: rgba(var(--background-primary-rgb, 0 0 0) / 0.45);
+  border-radius: 4px;
+  pointer-events: all;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.col-loading-overlay.col-loading-visible {
+  opacity: 1;
+}
+.col-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--background-modifier-border);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: col-spin 0.75s linear infinite;
+}
+.col-loading-label {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+@keyframes col-spin {
+  to { transform: rotate(360deg); }
+}
+.collectors-root {
+  position: relative;
 }

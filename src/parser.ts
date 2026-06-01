@@ -23,7 +23,7 @@ export async function parseCollectionFile(
 ): Promise<Collection | null> {
   const content = await vault.read(file);
 
-  let collectionType: CollectionType = 'custom';
+  let collectionType: CollectionType = 'mtg-theme';
   let setCode: string | undefined;
   let scryfallQuery: string | undefined;
   let scryfallOrder: string | undefined;
@@ -43,7 +43,7 @@ export async function parseCollectionFile(
       const val = unquoteYaml(rest.join(':').trim());
       switch (key.trim()) {
         case 'collection-type':
-          collectionType = val as CollectionType;
+          collectionType = (val === 'custom' ? 'mtg-theme' : val) as CollectionType;
           break;
         case 'collection-name':
           collectionName = val;
@@ -295,10 +295,59 @@ export async function replaceFrontmatter(
   const fmEnd = content.indexOf('\n---', 4);
   if (content.startsWith('---\n') && fmEnd !== -1) {
     const body = content.slice(fmEnd + 4); // skip '\n---'
-    await vault.modify(file, fmLines.join('\n') + '\n' + body);
+    // Normalize leading newlines to exactly one blank line (prevents accumulation on repeated saves)
+    await vault.modify(file, fmLines.join('\n') + body.replace(/^\n*/, '\n\n'));
   } else {
     await vault.modify(file, fmLines.join('\n') + '\n\n' + content);
   }
+}
+
+export function extractOwnedMap(content: string): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const line of content.split('\n')) {
+    if (!CHECKBOX_PATTERN.test(line)) continue;
+    const cells = line.split('|').slice(1, -1).map(c => c.trim());
+    if (cells.length < 7) continue;
+    const checkboxCell = cells[0];
+    const isOwned = checkboxCell.includes('checked') && !checkboxCell.includes('unchecked');
+    if (!isOwned) continue;
+    const countMatch = checkboxCell.match(/data-count="(\d+)"/);
+    const count = countMatch ? parseInt(countMatch[1]) : 1;
+    const set = cells[5].trim().toLowerCase();
+    const number = cells[6].trim();
+    const idMatch = checkboxCell.match(/id="([^"]+)"/);
+    const id = idMatch?.[1] ?? '';
+    const suffix = id.endsWith('_f') ? '_f' : '_n';
+    map.set(`${set}#${number}${suffix}`, count);
+  }
+  return map;
+}
+
+export async function clearCardRows(file: TFile, vault: Vault): Promise<void> {
+  const content = await vault.read(file);
+  const lines = content.split('\n');
+  const filtered = lines.filter(line => !CHECKBOX_PATTERN.test(line));
+  await vault.modify(file, filtered.join('\n').trimEnd() + '\n');
+}
+
+export function applyOwnedStates(rows: string[], ownedMap: Map<string, number>): string[] {
+  return rows.map(row => {
+    const cells = row.split('|').slice(1, -1).map(c => c.trim());
+    if (cells.length < 7) return row;
+    const set = cells[5].trim().toLowerCase();
+    const number = cells[6].trim();
+    const idMatch = cells[0].match(/id="([^"]+)"/);
+    const id = idMatch?.[1] ?? '';
+    const suffix = id.endsWith('_f') ? '_f' : '_n';
+    const prevCount = ownedMap.get(`${set}#${number}${suffix}`);
+    if (prevCount && prevCount > 0) {
+      return row.replace(
+        `unchecked id="${id}"`,
+        prevCount > 1 ? `checked id="${id}" data-count="${prevCount}"` : `checked id="${id}"`
+      );
+    }
+    return row;
+  });
 }
 
 /**

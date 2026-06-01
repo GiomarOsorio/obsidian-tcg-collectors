@@ -22,10 +22,10 @@ __export(main_exports, {
   default: () => CollectorsPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian8 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // src/DashboardView.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 
 // src/parser.ts
 var CHECKBOX_PATTERN = /<input type="checkbox"/;
@@ -43,7 +43,7 @@ function unquoteYaml(s) {
 }
 async function parseCollectionFile(file, vault) {
   const content = await vault.read(file);
-  let collectionType = "custom";
+  let collectionType = "mtg-theme";
   let setCode;
   let scryfallQuery;
   let scryfallOrder;
@@ -62,7 +62,7 @@ async function parseCollectionFile(file, vault) {
       const val = unquoteYaml(rest.join(":").trim());
       switch (key.trim()) {
         case "collection-type":
-          collectionType = val;
+          collectionType = val === "custom" ? "mtg-theme" : val;
           break;
         case "collection-name":
           collectionName = val;
@@ -232,6 +232,63 @@ async function setCardCount(file, cardId, count, vault) {
   }
   await vault.modify(file, lines.join("\n"));
 }
+async function replaceFrontmatter(file, fmLines, vault) {
+  const content = await vault.read(file);
+  const fmEnd = content.indexOf("\n---", 4);
+  if (content.startsWith("---\n") && fmEnd !== -1) {
+    const body = content.slice(fmEnd + 4);
+    await vault.modify(file, fmLines.join("\n") + body.replace(/^\n*/, "\n\n"));
+  } else {
+    await vault.modify(file, fmLines.join("\n") + "\n\n" + content);
+  }
+}
+function extractOwnedMap(content) {
+  var _a;
+  const map = /* @__PURE__ */ new Map();
+  for (const line of content.split("\n")) {
+    if (!CHECKBOX_PATTERN.test(line)) continue;
+    const cells = line.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 7) continue;
+    const checkboxCell = cells[0];
+    const isOwned = checkboxCell.includes("checked") && !checkboxCell.includes("unchecked");
+    if (!isOwned) continue;
+    const countMatch = checkboxCell.match(/data-count="(\d+)"/);
+    const count = countMatch ? parseInt(countMatch[1]) : 1;
+    const set = cells[5].trim().toLowerCase();
+    const number = cells[6].trim();
+    const idMatch = checkboxCell.match(/id="([^"]+)"/);
+    const id = (_a = idMatch == null ? void 0 : idMatch[1]) != null ? _a : "";
+    const suffix = id.endsWith("_f") ? "_f" : "_n";
+    map.set(`${set}#${number}${suffix}`, count);
+  }
+  return map;
+}
+async function clearCardRows(file, vault) {
+  const content = await vault.read(file);
+  const lines = content.split("\n");
+  const filtered = lines.filter((line) => !CHECKBOX_PATTERN.test(line));
+  await vault.modify(file, filtered.join("\n").trimEnd() + "\n");
+}
+function applyOwnedStates(rows, ownedMap) {
+  return rows.map((row) => {
+    var _a;
+    const cells = row.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 7) return row;
+    const set = cells[5].trim().toLowerCase();
+    const number = cells[6].trim();
+    const idMatch = cells[0].match(/id="([^"]+)"/);
+    const id = (_a = idMatch == null ? void 0 : idMatch[1]) != null ? _a : "";
+    const suffix = id.endsWith("_f") ? "_f" : "_n";
+    const prevCount = ownedMap.get(`${set}#${number}${suffix}`);
+    if (prevCount && prevCount > 0) {
+      return row.replace(
+        `unchecked id="${id}"`,
+        prevCount > 1 ? `checked id="${id}" data-count="${prevCount}"` : `checked id="${id}"`
+      );
+    }
+    return row;
+  });
+}
 async function patchFrontmatter(file, key, value, vault) {
   const content = await vault.read(file);
   const fmEnd = content.indexOf("\n---", 4);
@@ -277,9 +334,13 @@ var MIGRATIONS = [
   }
 ];
 async function migrateCollection(file, fileVersion, currentVersion, vault) {
+  if (fileVersion === currentVersion) return false;
   if (fileVersion && !semverGt(currentVersion, fileVersion)) return false;
   const pending = fileVersion ? MIGRATIONS.filter((m) => semverGt(m.toVersion, fileVersion)) : [...MIGRATIONS];
-  if (pending.length === 0) return false;
+  if (pending.length === 0) {
+    await patchFrontmatter(file, "plugin-version", currentVersion, vault);
+    return true;
+  }
   let content = await vault.read(file);
   for (const m of pending) {
     await m.run(file, content, vault);
@@ -287,84 +348,6 @@ async function migrateCollection(file, fileVersion, currentVersion, vault) {
   }
   await patchFrontmatter(file, "plugin-version", currentVersion, vault);
   return true;
-}
-
-// src/CardZoomModal.ts
-function clamp(v, min = 0, max = 100) {
-  return Math.min(max, Math.max(min, v));
-}
-function adjust(val, fromMin, fromMax, toMin, toMax) {
-  return toMin + (toMax - toMin) * ((val - fromMin) / (fromMax - fromMin));
-}
-function openCardZoom(imageUrl, name, isFoil) {
-  const overlay = document.createElement("div");
-  overlay.className = "col-zoom-overlay";
-  const wrapper = document.createElement("div");
-  wrapper.className = "col-zoom-wrapper";
-  const rotator = document.createElement("div");
-  rotator.className = "col-zoom-rotator";
-  const img = document.createElement("img");
-  img.src = imageUrl;
-  img.alt = name;
-  img.className = "col-zoom-img";
-  if (isFoil) {
-    const shine = document.createElement("div");
-    shine.className = "col-zoom-shine";
-    const glare = document.createElement("div");
-    glare.className = "col-zoom-glare";
-    rotator.append(img, shine, glare);
-    rotator.classList.add("col-zoom-foil");
-  } else {
-    rotator.append(img);
-  }
-  wrapper.append(rotator);
-  overlay.append(wrapper);
-  document.body.append(overlay);
-  requestAnimationFrame(() => overlay.classList.add("col-zoom-active"));
-  const close = () => {
-    overlay.classList.remove("col-zoom-active");
-    document.removeEventListener("keydown", onKeyDown);
-    setTimeout(() => overlay.remove(), 300);
-  };
-  const onKeyDown = (e) => {
-    if (e.key === "Escape") close();
-  };
-  document.addEventListener("keydown", onKeyDown);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay || e.target === wrapper) close();
-  });
-  let rafId = null;
-  rotator.addEventListener("pointermove", (e) => {
-    const rect = rotator.getBoundingClientRect();
-    const px = clamp((e.clientX - rect.left) / rect.width * 100);
-    const py = clamp((e.clientY - rect.top) / rect.height * 100);
-    const cx = px - 50;
-    const cy = py - 50;
-    if (rafId !== null) cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(() => {
-      rotator.style.setProperty("--pointer-x", `${px}%`);
-      rotator.style.setProperty("--pointer-y", `${py}%`);
-      rotator.style.setProperty("--rx", `${-(cx / 3.5)}deg`);
-      rotator.style.setProperty("--ry", `${cy / 3.5}deg`);
-      rotator.style.setProperty("--bg-x", `${adjust(px, 0, 100, 37, 63)}%`);
-      rotator.style.setProperty("--bg-y", `${adjust(py, 0, 100, 33, 67)}%`);
-      rotator.style.setProperty("--card-opacity", "1");
-      rafId = null;
-    });
-  });
-  rotator.addEventListener("pointerleave", () => {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    rotator.style.setProperty("--rx", "0deg");
-    rotator.style.setProperty("--ry", "0deg");
-    rotator.style.setProperty("--pointer-x", "50%");
-    rotator.style.setProperty("--pointer-y", "50%");
-    rotator.style.setProperty("--bg-x", "50%");
-    rotator.style.setProperty("--bg-y", "50%");
-    rotator.style.setProperty("--card-opacity", "0");
-  });
 }
 
 // src/NewCollectionModal.ts
@@ -411,17 +394,23 @@ async function fetchSetReleasedAt(setCode) {
 async function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-async function fetchAllPages(url, onPage) {
-  var _a;
+async function fetchAllPages(url, onPage, onRateLimit) {
+  var _a, _b, _c;
   const cards = [];
   let nextUrl = url;
   let page = 1;
   while (nextUrl) {
-    const res = await (0, import_obsidian.requestUrl)({ url: nextUrl, headers: { Accept: "application/json" } });
+    let res = await (0, import_obsidian.requestUrl)({ url: nextUrl, headers: { Accept: "application/json" } });
+    if (res.status === 429) {
+      const retryAfter = parseInt((_b = (_a = res.headers) == null ? void 0 : _a["retry-after"]) != null ? _b : "30") || 30;
+      onRateLimit == null ? void 0 : onRateLimit(retryAfter);
+      await delay(retryAfter * 1e3);
+      res = await (0, import_obsidian.requestUrl)({ url: nextUrl, headers: { Accept: "application/json" } });
+    }
     if (res.status < 200 || res.status >= 300) {
       let details = "";
       try {
-        details = (_a = res.json.details) != null ? _a : "";
+        details = (_c = res.json.details) != null ? _c : "";
       } catch (e) {
       }
       throw new Error(details || `Scryfall error ${res.status}`);
@@ -440,15 +429,16 @@ async function fetchAllPages(url, onPage) {
   }
   return cards;
 }
-async function fetchSetCards(setCode, onPage, unique = "prints") {
+async function fetchSetCards(setCode, onPage, unique = "prints", onRateLimit) {
   const q = encodeURIComponent(`e:${setCode.toLowerCase()} order:set`);
-  return fetchAllPages(`${API}/cards/search?q=${q}&unique=${unique}`, onPage);
+  return fetchAllPages(`${API}/cards/search?q=${q}&unique=${unique}`, onPage, onRateLimit);
 }
-async function fetchSearchCards(query, onPage, order = "released") {
+async function fetchSearchCards(query, onPage, order = "released", onRateLimit) {
   const q = encodeURIComponent(query);
   return fetchAllPages(
     `${API}/cards/search?q=${q}&unique=prints&order=${order}&dir=asc`,
-    onPage
+    onPage,
+    onRateLimit
   );
 }
 var scryfallCache = /* @__PURE__ */ new Map();
@@ -458,8 +448,8 @@ function getScryfallData(set, number) {
 function isScryfallCached(set, number) {
   return scryfallCache.has(`${set.toLowerCase()}#${number}`);
 }
-async function fetchScryfallData(identifiers) {
-  var _a, _b;
+async function fetchScryfallData(identifiers, onRateLimit) {
+  var _a, _b, _c, _d;
   const seen = /* @__PURE__ */ new Set();
   const toFetch = identifiers.filter((id) => {
     const key = `${id.set.toLowerCase()}#${id.collector_number}`;
@@ -470,35 +460,60 @@ async function fetchScryfallData(identifiers) {
   if (toFetch.length === 0) return;
   const NULL_ENTRY = { usd: null, usd_foil: null, eur: null, eur_foil: null, tcgplayer_id: null, cardmarket_id: null };
   for (let i = 0; i < toFetch.length; i += 75) {
+    if (i > 0) await delay(500);
     const batch = toFetch.slice(i, i + 75);
-    for (const id of batch) {
-      scryfallCache.set(`${id.set.toLowerCase()}#${id.collector_number}`, { ...NULL_ENTRY });
-    }
-    try {
-      const res = await (0, import_obsidian.requestUrl)({
-        url: `${API}/cards/collection`,
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ identifiers: batch })
-      });
-      if (res.status < 200 || res.status >= 300) {
-        console.error(`[Collectors] Scryfall /cards/collection returned ${res.status}`);
-        continue;
-      }
-      const data = res.json;
-      for (const card of data.data) {
-        const p = card.prices;
-        scryfallCache.set(`${card.set.toLowerCase()}#${card.collector_number}`, {
-          usd: p.usd != null ? parseFloat(p.usd) : null,
-          usd_foil: p.usd_foil != null ? parseFloat(p.usd_foil) : null,
-          eur: p.eur != null ? parseFloat(p.eur) : null,
-          eur_foil: p.eur_foil != null ? parseFloat(p.eur_foil) : null,
-          tcgplayer_id: (_a = card.tcgplayer_id) != null ? _a : null,
-          cardmarket_id: (_b = card.cardmarket_id) != null ? _b : null
+    let retries = 0;
+    let success = false;
+    while (retries < 3) {
+      try {
+        const res = await (0, import_obsidian.requestUrl)({
+          url: `${API}/cards/collection`,
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ identifiers: batch })
         });
+        if (res.status === 429) {
+          const retryAfter = parseInt((_b = (_a = res.headers) == null ? void 0 : _a["retry-after"]) != null ? _b : "30") || 30;
+          onRateLimit == null ? void 0 : onRateLimit(retryAfter);
+          await delay(retryAfter * 1e3);
+          retries++;
+          continue;
+        }
+        if (res.status < 200 || res.status >= 300) {
+          console.error(`[Collectors] Scryfall /cards/collection returned ${res.status}`);
+          break;
+        }
+        const data = res.json;
+        const foundKeys = /* @__PURE__ */ new Set();
+        for (const card of data.data) {
+          const key = `${card.set.toLowerCase()}#${card.collector_number}`;
+          foundKeys.add(key);
+          const p = card.prices;
+          scryfallCache.set(key, {
+            usd: p.usd != null ? parseFloat(p.usd) : null,
+            usd_foil: p.usd_foil != null ? parseFloat(p.usd_foil) : null,
+            eur: p.eur != null ? parseFloat(p.eur) : null,
+            eur_foil: p.eur_foil != null ? parseFloat(p.eur_foil) : null,
+            tcgplayer_id: (_c = card.tcgplayer_id) != null ? _c : null,
+            cardmarket_id: (_d = card.cardmarket_id) != null ? _d : null
+          });
+        }
+        for (const id of batch) {
+          const key = `${id.set.toLowerCase()}#${id.collector_number}`;
+          if (!foundKeys.has(key)) scryfallCache.set(key, { ...NULL_ENTRY });
+        }
+        success = true;
+        break;
+      } catch (e) {
+        console.error("[Collectors] Scryfall price fetch failed:", e);
+        break;
       }
-    } catch (e) {
-      console.error("[Collectors] Scryfall price fetch failed:", e);
+    }
+    if (!success) {
+      for (const id of batch) {
+        const key = `${id.set.toLowerCase()}#${id.collector_number}`;
+        if (!scryfallCache.has(key)) scryfallCache.set(key, { ...NULL_ENTRY });
+      }
     }
   }
 }
@@ -555,13 +570,11 @@ var GAMES = {
 var GAME_ORDER = ["mtg", "pokemon", "onepiece", "yugioh"];
 var TYPE_LABELS = {
   "mtg-set": "MTG Set / Product",
-  "mtg-theme": "MTG Theme Collection",
-  "custom": "Custom Collection"
+  "mtg-theme": "MTG Theme Collection"
 };
 var TABLE_HEADERS = {
   "mtg-set": "| \xBFLa tengo? | Imagen | Nombre | Tipo | Rareza | Set | N\xFAmero | Notas |\n| --- | --- | --- | --- | --- | --- | --- | --- |",
-  "mtg-theme": "| In Collection | Image | Name | Type | Rarity | Set | Number | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- |",
-  "custom": "| In Collection | Image | Name | Type | Category | Set | Number | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- |"
+  "mtg-theme": "| In Collection | Image | Name | Type | Rarity | Set | Number | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- |"
 };
 var NewCollectionModal = class extends import_obsidian2.Modal {
   constructor(app, plugin, onCreated, editTarget) {
@@ -666,6 +679,11 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
       t.setPlaceholder("Query: type:turtle game:paper\n\nURL: https://scryfall.com/search?q=...");
       t.inputEl.rows = 3;
       t.inputEl.addClass("nm-query-input");
+      if (this.scryfallQuery) {
+        t.setValue(this.scryfallQuery);
+        previewEl.textContent = `Query: ${this.scryfallQuery}`;
+        previewEl.style.display = "";
+      }
       t.onChange((raw) => {
         var _a;
         const parsed = parseScryfallInput(raw);
@@ -676,7 +694,18 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
       });
     });
     queryWrap.appendChild(previewEl);
-    const autoFetchSetting = new import_obsidian2.Setting(el).setName("Auto-fetch cards from Scryfall").setDesc("Populate collection with cards from Scryfall after creation.").addToggle((t) => t.setValue(this.autoFetch).onChange((v) => this.autoFetch = v));
+    let refetchWarning = null;
+    const autoFetchSetting = new import_obsidian2.Setting(el).setName(this.editTarget ? "Re-fetch cards from Scryfall" : "Auto-fetch cards from Scryfall").setDesc(
+      this.editTarget ? "Replace all cards with a fresh import. Use when the query or set code changed." : "Populate collection with cards from Scryfall after creation."
+    ).addToggle((t) => t.setValue(this.autoFetch).onChange((v) => {
+      this.autoFetch = v;
+      if (refetchWarning) refetchWarning.style.display = v ? "" : "none";
+    }));
+    if (this.editTarget) {
+      refetchWarning = el.createDiv({ cls: "ncm-refetch-warning" });
+      refetchWarning.style.display = this.autoFetch ? "" : "none";
+      refetchWarning.setText("\u26A0 All cards will be replaced by the new Scryfall results. Previously owned cards matching the new query will have their status preserved.");
+    }
     const autoUpdateSetting = new import_obsidian2.Setting(el).setName("Auto-update").setDesc("Check for new cards on Scryfall every time the dashboard opens. Ideal for theme collections.").addToggle((t) => t.setValue(this.autoUpdate).onChange((v) => this.autoUpdate = v));
     autoUpdateSetting.settingEl.style.display = "none";
     new import_obsidian2.Setting(el).setName("Type").addDropdown((d) => {
@@ -684,14 +713,18 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
         d.addOption(val, label);
       }
       d.setValue(this.type);
-      d.onChange((v) => {
-        this.type = v;
-        const isSet = this.type === "mtg-set";
+      const applyVisibility = (type) => {
+        const isSet = type === "mtg-set";
         setCodeSetting.settingEl.style.display = isSet ? "" : "none";
         finishSetting.settingEl.style.display = isSet ? "" : "none";
         allPrintsSetting.settingEl.style.display = isSet ? "" : "none";
         queryWrap.style.display = isSet ? "none" : "";
         autoUpdateSetting.settingEl.style.display = isSet ? "none" : "";
+      };
+      applyVisibility(this.type);
+      d.onChange((v) => {
+        this.type = v;
+        applyVisibility(this.type);
       });
     });
     new import_obsidian2.Setting(el).setName("Format").setDesc("Physical cards or MTG Arena digital.").addDropdown((d) => {
@@ -725,36 +758,64 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     }
     const { file } = this.editTarget;
     const isSet = this.type === "mtg-set";
+    const fmLines = [
+      "---",
+      `cssclasses: collectors-file`,
+      `plugin-version: ${this.plugin.manifest.version}`,
+      `collection-type: ${this.type}`,
+      `collection-format: ${this.format}`,
+      `collection-name: ${yamlStr(this.name)}`,
+      isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : "",
+      isSet ? `finish-import: ${this.finishImport}` : "",
+      isSet ? `all-prints: ${this.allPrints}` : "",
+      !isSet && this.scryfallQuery ? `scryfall-query: ${this.scryfallQuery}` : "",
+      !isSet && this.scryfallOrder && this.scryfallOrder !== "released" ? `scryfall-order: ${this.scryfallOrder}` : "",
+      this.autoUpdate ? "auto-update: true" : "",
+      "---"
+    ].filter(Boolean);
     try {
-      await this.app.fileManager.processFrontMatter(file, (fm) => {
-        fm["cssclasses"] = "collectors-file";
-        fm["plugin-version"] = this.plugin.manifest.version;
-        fm["collection-type"] = this.type;
-        fm["collection-format"] = this.format;
-        fm["collection-name"] = this.name;
-        if (isSet && this.setCode) fm["set-code"] = this.setCode.toUpperCase();
-        else delete fm["set-code"];
-        if (isSet) {
-          fm["finish-import"] = this.finishImport;
-          fm["all-prints"] = this.allPrints;
-        } else {
-          delete fm["finish-import"];
-          delete fm["all-prints"];
-        }
-        if (!isSet && this.scryfallQuery) fm["scryfall-query"] = this.scryfallQuery;
-        else delete fm["scryfall-query"];
-        if (!isSet && this.scryfallOrder && this.scryfallOrder !== "released") fm["scryfall-order"] = this.scryfallOrder;
-        else delete fm["scryfall-order"];
-        if (this.autoUpdate) fm["auto-update"] = true;
-        else delete fm["auto-update"];
-      });
+      await replaceFrontmatter(file, fmLines, this.app.vault);
+      new import_obsidian2.Notice("Collection saved.");
       this.close();
       if (this.autoFetch && (isSet ? !!this.setCode : !!this.scryfallQuery)) {
-        await this.fetchAndPopulate(file, isSet);
+        await this.refetchWithPreservation(file, isSet);
       }
       this.onCreated();
     } catch (e) {
       new import_obsidian2.Notice(`Failed to save: ${e.message}`);
+    }
+  }
+  // ── Re-fetch with ownership preservation (edit mode) ────────────────────────
+  async refetchWithPreservation(file, isSet) {
+    const content = await this.app.vault.read(file);
+    const previousOwned = extractOwnedMap(content);
+    new import_obsidian2.Notice("Fetching cards from Scryfall...");
+    try {
+      const cards = isSet ? await fetchSetCards(
+        this.setCode,
+        (p) => new import_obsidian2.Notice(`Fetching page ${p}...`),
+        this.allPrints ? "prints" : "cards"
+      ) : await fetchSearchCards(
+        this.scryfallQuery,
+        (p) => new import_obsidian2.Notice(`Fetching page ${p}...`),
+        this.scryfallOrder
+      );
+      const finish = this.finishImport;
+      const rawRows = cards.flatMap((card) => {
+        if (finish === "all") return cardToMarkdownRows(card);
+        const filtered = { ...card, finishes: card.finishes.filter((f) => f === finish) };
+        return cardToMarkdownRows(filtered);
+      });
+      const restoredRows = applyOwnedStates(rawRows, previousOwned);
+      const preservedCount = restoredRows.filter((r, i) => r !== rawRows[i]).length;
+      await clearCardRows(file, this.app.vault);
+      await appendCards(file, restoredRows, this.app.vault);
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      await patchFrontmatter(file, "last-fetched", today, this.app.vault);
+      const msg = previousOwned.size > 0 ? `Re-imported ${restoredRows.length} cards. ${preservedCount}/${previousOwned.size} owned entries preserved.` : `Re-imported ${restoredRows.length} cards.`;
+      new import_obsidian2.Notice(msg);
+    } catch (e) {
+      new import_obsidian2.Notice(`Scryfall fetch failed: ${e.message}`);
     }
   }
   // ── Create ──────────────────────────────────────────────────────────────────
@@ -834,20 +895,407 @@ ${TABLE_HEADERS[this.type]}
   }
 };
 
+// src/DashboardView.ts
+var DASHBOARD_VIEW_TYPE = "collectors-dashboard";
+var DashboardView = class extends import_obsidian3.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.collections = [];
+    this.collapsedGroups = /* @__PURE__ */ new Set();
+    this.plugin = plugin;
+  }
+  getViewType() {
+    return DASHBOARD_VIEW_TYPE;
+  }
+  getDisplayText() {
+    return "Collectors";
+  }
+  getIcon() {
+    return "layout-grid";
+  }
+  async onOpen() {
+    await this.refresh();
+    this.registerEvent(this.app.vault.on("create", (f) => {
+      if (f instanceof import_obsidian3.TFile && f.extension === "collection") this.refresh();
+    }));
+    this.registerEvent(this.app.vault.on("delete", (f) => {
+      if (f instanceof import_obsidian3.TFile && f.extension === "collection") this.refresh();
+    }));
+    this.registerEvent(this.app.vault.on("rename", (f, old) => {
+      if (f instanceof import_obsidian3.TFile && f.extension === "collection") this.refresh();
+      else if (old.endsWith(".collection")) this.refresh();
+    }));
+    let modifyTimer = null;
+    this.registerEvent(this.app.vault.on("modify", (f) => {
+      if (!(f instanceof import_obsidian3.TFile) || f.extension !== "collection") return;
+      if (modifyTimer) clearTimeout(modifyTimer);
+      modifyTimer = setTimeout(() => {
+        modifyTimer = null;
+        this.refresh();
+      }, 300);
+    }));
+  }
+  async refresh() {
+    this.collections = await this.loadCollections();
+    this.render();
+    this.runMigrations();
+    this.runAutoUpdates();
+    this.prefetchAllPrices();
+  }
+  runMigrations() {
+    const currentVersion = this.plugin.manifest.version;
+    for (const coll of this.collections) {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (file instanceof import_obsidian3.TFile) {
+        migrateCollection(file, coll.pluginVersion, currentVersion, this.app.vault);
+      }
+    }
+  }
+  // ── Price helpers ─────────────────────────────────────────────────────────────
+  cardPrice(card) {
+    return this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith("_f"));
+  }
+  fmt(val) {
+    return `${this.plugin.priceService.currency()}${val.toFixed(2)}`;
+  }
+  collValues(cards) {
+    let owned = 0, missing = 0, loaded = false;
+    for (const card of cards) {
+      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
+      loaded = true;
+      const p = this.cardPrice(card);
+      if (typeof p === "number") {
+        if (card.owned) owned += p;
+        else missing += p;
+      }
+    }
+    return { owned, missing, loaded };
+  }
+  async prefetchAllPrices() {
+    const ids = this.collections.filter((c) => c.format !== "arena").flatMap((c) => c.cards.map((card) => ({ set: card.set.toLowerCase(), collector_number: card.number })));
+    const needed = ids.filter((id) => !this.plugin.priceService.isCached(id.set, id.collector_number));
+    if (needed.length === 0) return;
+    await this.plugin.priceService.fetchPrices(ids);
+    this.render();
+  }
+  // ── Lifecycle ─────────────────────────────────────────────────────────────────
+  runAutoUpdates() {
+    const targets = this.collections.filter(
+      (c) => c.autoUpdate && (c.setCode || c.scryfallQuery)
+    );
+    for (const coll of targets) {
+      this.updateFromScryfall(coll, true).then((added) => {
+        if (added > 0) this.refresh();
+      });
+    }
+  }
+  async loadCollections() {
+    const { vault } = this.app;
+    const folder = this.plugin.settings.collectionsFolder;
+    const allFiles = vault.getFiles().filter((f) => f.extension === "collection");
+    let files;
+    if (folder) {
+      files = allFiles.filter((f) => {
+        var _a;
+        return f.path.startsWith(folder + "/") || ((_a = f.parent) == null ? void 0 : _a.path) === folder;
+      });
+    } else {
+      files = allFiles;
+    }
+    const results = await Promise.all(
+      files.map((f) => parseCollectionFile(f, vault))
+    );
+    return results.filter((c) => c !== null).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  render() {
+    const content = this.contentEl;
+    content.empty();
+    content.addClass("collectors-root");
+    this.renderList(content);
+  }
+  // ── List screen ───────────────────────────────────────────────────────────────
+  renderList(root) {
+    const header = root.createDiv({ cls: "col-header col-header-stack" });
+    header.createEl("h2", { text: "Collectors", cls: "col-title" });
+    const actions = header.createDiv({ cls: "col-actions" });
+    const refreshBtn = actions.createEl("button", { cls: "col-btn-icon", attr: { title: "Refresh" } });
+    refreshBtn.innerHTML = "\u21BB";
+    refreshBtn.addEventListener("click", () => this.refresh());
+    const newBtn = actions.createEl("button", { cls: "col-btn", text: "+ New Collection" });
+    newBtn.addEventListener(
+      "click",
+      () => new NewCollectionModal(this.app, this.plugin, () => this.refresh()).open()
+    );
+    if (this.collections.length === 0) {
+      root.createDiv({ cls: "col-empty", text: "No collections found. Create one or configure the folder in settings." });
+      return;
+    }
+    this.renderHeroStats(root);
+    const grouped = this.groupByType(this.collections);
+    const order = ["mtg-set", "mtg-theme"];
+    const labels = {
+      "mtg-set": "MTG Sets",
+      "mtg-theme": "Theme Collections"
+    };
+    for (const type of order) {
+      const colls = grouped[type];
+      if (!(colls == null ? void 0 : colls.length)) continue;
+      const collapsed = this.collapsedGroups.has(type);
+      const section = root.createDiv({ cls: `col-section${collapsed ? " col-section-collapsed" : ""}` });
+      const titleRow = section.createEl("h3", { cls: "col-section-title" });
+      titleRow.createEl("span", { cls: "col-section-chevron", text: collapsed ? "\u25B6" : "\u25BC" });
+      titleRow.createEl("span", { text: `${labels[type]} (${colls.length})` });
+      titleRow.addEventListener("click", () => {
+        if (this.collapsedGroups.has(type)) this.collapsedGroups.delete(type);
+        else this.collapsedGroups.add(type);
+        section.toggleClass("col-section-collapsed", this.collapsedGroups.has(type));
+        const chevron = titleRow.querySelector(".col-section-chevron");
+        if (chevron) chevron.textContent = this.collapsedGroups.has(type) ? "\u25B6" : "\u25BC";
+      });
+      const grid = section.createDiv({ cls: "col-collection-grid" });
+      for (const coll of colls) {
+        this.renderCollectionCard(grid, coll);
+      }
+    }
+  }
+  renderHeroStats(root) {
+    const allCards = this.collections.flatMap((c) => c.cards);
+    const totalOwned = this.collections.reduce((s, c) => s + c.owned, 0);
+    const totalCards = this.collections.reduce((s, c) => s + c.total, 0);
+    let totalInvested = 0, totalMissing = 0, pricesLoaded = false;
+    for (const card of allCards) {
+      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
+      pricesLoaded = true;
+      const p = this.cardPrice(card);
+      if (typeof p === "number") {
+        if (card.owned) totalInvested += p;
+        else totalMissing += p;
+      }
+    }
+    const hero = root.createDiv({ cls: "col-hero" });
+    this.statBox(hero, String(this.collections.length), "Collections", "");
+    this.statBox(hero, `${totalOwned} / ${totalCards}`, "Cards owned", "col-hero-owned");
+    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : "\u2026", `Invested \xB7 ${this.plugin.priceService.sourceLabel()}`, "col-hero-money");
+    this.statBox(hero, pricesLoaded ? this.fmt(totalMissing) : "\u2026", "To complete", "col-hero-missing");
+  }
+  statBox(container, value, label, mod) {
+    const box = container.createDiv({ cls: `col-hero-box${mod ? " " + mod : ""}` });
+    box.createEl("span", { cls: "col-hero-value", text: value });
+    box.createEl("span", { cls: "col-hero-label", text: label });
+  }
+  renderCollectionCard(container, coll) {
+    var _a, _b;
+    const pct2 = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
+    const missing = coll.total - coll.owned;
+    const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll.cards);
+    const card = container.createDiv({ cls: "col-card" });
+    const thumb = card.createDiv({ cls: "col-card-thumb" });
+    const thumbCard = coll.cards.find((c) => c.imageUrl);
+    if (thumbCard == null ? void 0 : thumbCard.imageUrl) {
+      const img = thumb.createEl("img", {
+        cls: "col-card-thumb-img",
+        attr: { src: thumbCard.imageUrl, alt: coll.name, loading: "lazy" }
+      });
+      img.addEventListener("error", () => {
+        var _a2, _b2;
+        img.remove();
+        thumb.createEl("div", { cls: "col-card-thumb-fallback", text: (_b2 = (_a2 = coll.name[0]) == null ? void 0 : _a2.toUpperCase()) != null ? _b2 : "?" });
+      });
+    } else {
+      thumb.createEl("div", { cls: "col-card-thumb-fallback", text: (_b = (_a = coll.name[0]) == null ? void 0 : _a.toUpperCase()) != null ? _b : "?" });
+    }
+    const info = card.createDiv({ cls: "col-card-info" });
+    const nameRow = info.createDiv({ cls: "col-card-name-row" });
+    nameRow.createEl("span", { cls: "col-card-name", text: coll.name });
+    if (coll.setCode) nameRow.createEl("span", { cls: "col-badge", text: coll.setCode });
+    if (coll.format === "arena") nameRow.createEl("span", { cls: "col-badge col-badge-arena", text: "Arena" });
+    const progressWrap = info.createDiv({ cls: "col-progress-wrap" });
+    const bar = progressWrap.createDiv({ cls: "col-progress-bar" });
+    bar.createDiv({ cls: "col-progress-fill" }).style.width = `${pct2}%`;
+    progressWrap.createEl("span", { cls: "col-pct", text: `${pct2}%` });
+    const stats = info.createDiv({ cls: "col-stats" });
+    stats.createEl("span", { cls: "col-stat-owned", text: `${coll.owned} owned` });
+    stats.createEl("span", { cls: "col-dot", text: "\xB7" });
+    stats.createEl("span", { text: `${coll.total} total` });
+    if (missing > 0) {
+      stats.createEl("span", { cls: "col-dot", text: "\xB7" });
+      stats.createEl("span", { cls: "col-stat-missing", text: `${missing} missing` });
+    }
+    if (pricesLoaded) {
+      const priceRow = info.createDiv({ cls: "col-price-row" });
+      priceRow.createEl("span", { cls: "col-price-invested", text: `${this.fmt(ownedVal)} invested` });
+      if (missingVal > 0) {
+        priceRow.createEl("span", { cls: "col-dot", text: "\xB7" });
+        priceRow.createEl("span", { cls: "col-price-missing", text: `${this.fmt(missingVal)} to complete` });
+      }
+    }
+    const cardActions = info.createDiv({ cls: "col-card-actions" });
+    const detailBtn = cardActions.createEl("button", { cls: "col-btn col-btn-view", attr: { title: "View cards" } });
+    detailBtn.innerHTML = "\u229E View";
+    detailBtn.addEventListener("click", () => {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (file instanceof import_obsidian3.TFile) this.app.workspace.getLeaf("tab").openFile(file);
+    });
+    if (coll.setCode || coll.scryfallQuery) {
+      const updateBtn = cardActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Update from Scryfall" } });
+      updateBtn.innerHTML = "\u27F3";
+      updateBtn.addEventListener("click", async () => {
+        updateBtn.disabled = true;
+        await this.updateFromScryfall(coll);
+        updateBtn.disabled = false;
+      });
+    }
+    const editBtn = cardActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Edit collection" } });
+    editBtn.innerHTML = "\u270E";
+    editBtn.addEventListener("click", () => {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (!(file instanceof import_obsidian3.TFile)) return;
+      new NewCollectionModal(this.app, this.plugin, () => this.refresh(), { collection: coll, file }).open();
+    });
+  }
+  // ── Scryfall update ───────────────────────────────────────────────────────────
+  async updateFromScryfall(coll, silent = false) {
+    var _a, _b;
+    if (!silent) new import_obsidian3.Notice(`Fetching cards for "${coll.name}"...`);
+    try {
+      const finish = (_a = coll.finishImport) != null ? _a : "all";
+      const unique = coll.allPrints === false ? "cards" : "prints";
+      const onPage = (p) => {
+        if (!silent) new import_obsidian3.Notice(`Fetching page ${p}...`);
+      };
+      const onRateLimit = (s) => new import_obsidian3.Notice(`\u23F3 Scryfall rate limit hit \u2014 waiting ${s}s before retrying.`, s * 1e3);
+      const rawCards = coll.setCode ? await fetchSetCards(coll.setCode, onPage, unique, onRateLimit) : await fetchSearchCards(
+        coll.scryfallQuery,
+        onPage,
+        (_b = coll.scryfallOrder) != null ? _b : "released",
+        onRateLimit
+      );
+      const cards = finish === "all" ? rawCards : rawCards.map((c) => ({ ...c, finishes: c.finishes.filter((f) => f === finish) })).filter((c) => c.finishes.length > 0);
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (!(file instanceof import_obsidian3.TFile)) return 0;
+      const rows = cards.flatMap(cardToMarkdownRows);
+      const added = await appendCards(file, rows, this.app.vault);
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      await patchFrontmatter(file, "last-fetched", today, this.app.vault);
+      if (!silent) {
+        new import_obsidian3.Notice(
+          added > 0 ? `Added ${added} new cards to "${coll.name}".` : `"${coll.name}" is already up to date.`
+        );
+      } else if (added > 0) {
+        new import_obsidian3.Notice(`Auto-update: added ${added} new cards to "${coll.name}".`);
+      }
+      return added;
+    } catch (e) {
+      if (!silent) new import_obsidian3.Notice(`Scryfall update failed: ${e.message}`);
+      return 0;
+    }
+  }
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  groupByType(collections) {
+    var _a, _b;
+    const result = {};
+    for (const c of collections) {
+      ((_b = result[_a = c.type]) != null ? _b : result[_a] = []).push(c);
+    }
+    return result;
+  }
+};
+
+// src/CollectionView.ts
+var import_obsidian6 = require("obsidian");
+
+// src/CardZoomModal.ts
+function clamp(v, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, v));
+}
+function adjust(val, fromMin, fromMax, toMin, toMax) {
+  return toMin + (toMax - toMin) * ((val - fromMin) / (fromMax - fromMin));
+}
+function openCardZoom(imageUrl, name, isFoil) {
+  const overlay = document.createElement("div");
+  overlay.className = "col-zoom-overlay";
+  const wrapper = document.createElement("div");
+  wrapper.className = "col-zoom-wrapper";
+  const rotator = document.createElement("div");
+  rotator.className = "col-zoom-rotator";
+  const img = document.createElement("img");
+  img.src = imageUrl;
+  img.alt = name;
+  img.className = "col-zoom-img";
+  if (isFoil) {
+    const shine = document.createElement("div");
+    shine.className = "col-zoom-shine";
+    const glare = document.createElement("div");
+    glare.className = "col-zoom-glare";
+    rotator.append(img, shine, glare);
+    rotator.classList.add("col-zoom-foil");
+  } else {
+    rotator.append(img);
+  }
+  wrapper.append(rotator);
+  overlay.append(wrapper);
+  document.body.append(overlay);
+  requestAnimationFrame(() => overlay.classList.add("col-zoom-active"));
+  const close = () => {
+    overlay.classList.remove("col-zoom-active");
+    document.removeEventListener("keydown", onKeyDown);
+    setTimeout(() => overlay.remove(), 300);
+  };
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") close();
+  };
+  document.addEventListener("keydown", onKeyDown);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay || e.target === wrapper) close();
+  });
+  let rafId = null;
+  rotator.addEventListener("pointermove", (e) => {
+    const rect = rotator.getBoundingClientRect();
+    const px = clamp((e.clientX - rect.left) / rect.width * 100);
+    const py = clamp((e.clientY - rect.top) / rect.height * 100);
+    const cx = px - 50;
+    const cy = py - 50;
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      rotator.style.setProperty("--pointer-x", `${px}%`);
+      rotator.style.setProperty("--pointer-y", `${py}%`);
+      rotator.style.setProperty("--rx", `${-(cx / 3.5)}deg`);
+      rotator.style.setProperty("--ry", `${cy / 3.5}deg`);
+      rotator.style.setProperty("--bg-x", `${adjust(px, 0, 100, 37, 63)}%`);
+      rotator.style.setProperty("--bg-y", `${adjust(py, 0, 100, 33, 67)}%`);
+      rotator.style.setProperty("--card-opacity", "1");
+      rafId = null;
+    });
+  });
+  rotator.addEventListener("pointerleave", () => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    rotator.style.setProperty("--rx", "0deg");
+    rotator.style.setProperty("--ry", "0deg");
+    rotator.style.setProperty("--pointer-x", "50%");
+    rotator.style.setProperty("--pointer-y", "50%");
+    rotator.style.setProperty("--bg-x", "50%");
+    rotator.style.setProperty("--bg-y", "50%");
+    rotator.style.setProperty("--card-opacity", "0");
+  });
+}
+
 // src/CardSearchModal.ts
-var import_obsidian3 = require("obsidian");
 var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 var API2 = "https://api.scryfall.com";
 async function autocomplete(q) {
   if (q.length < 2) return [];
-  const res = await (0, import_obsidian3.requestUrl)({ url: `${API2}/cards/autocomplete?q=${encodeURIComponent(q)}` });
+  const res = await (0, import_obsidian4.requestUrl)({ url: `${API2}/cards/autocomplete?q=${encodeURIComponent(q)}` });
   if (res.status < 200 || res.status >= 300) return [];
   const data = res.json;
   return data.data.slice(0, 10);
 }
 async function fetchPrintings(name) {
   const q = encodeURIComponent(`!"${name}"`);
-  const res = await (0, import_obsidian3.requestUrl)({
+  const res = await (0, import_obsidian4.requestUrl)({
     url: `${API2}/cards/search?q=${q}&unique=prints&order=released&dir=asc`,
     headers: { Accept: "application/json" }
   });
@@ -855,7 +1303,7 @@ async function fetchPrintings(name) {
   const data = res.json;
   return data.data;
 }
-var CardSearchModal = class extends import_obsidian3.Modal {
+var CardSearchModal = class extends import_obsidian4.Modal {
   constructor(app, collection, onAdded) {
     super(app);
     this.query = "";
@@ -987,22 +1435,20 @@ var CardSearchModal = class extends import_obsidian3.Modal {
       if (matchRow) rows.push(matchRow);
     }
     const file = this.app.vault.getAbstractFileByPath(this.collection.path);
-    if (!(file instanceof import_obsidian4.TFile)) return;
+    if (!(file instanceof import_obsidian5.TFile)) return;
     const added = await appendCards(file, rows, this.app.vault);
-    new import_obsidian3.Notice(added > 0 ? `Added ${added} card(s) to "${this.collection.name}".` : "All selected cards already in collection.");
+    new import_obsidian4.Notice(added > 0 ? `Added ${added} card(s) to "${this.collection.name}".` : "All selected cards already in collection.");
     this.close();
     if (added > 0) this.onAdded();
   }
 };
 
-// src/DashboardView.ts
-var DASHBOARD_VIEW_TYPE = "collectors-dashboard";
-var DashboardView = class extends import_obsidian5.ItemView {
+// src/CollectionView.ts
+var COLLECTION_VIEW_TYPE = "collection-detail";
+var CollectionView = class extends import_obsidian6.FileView {
   constructor(leaf, plugin) {
     super(leaf);
-    this.collections = [];
-    this.screen = "list";
-    this.selected = null;
+    this.collection = null;
     this.filter = "all";
     this.finishFilter = "all";
     this.sortBy = "number";
@@ -1011,39 +1457,65 @@ var DashboardView = class extends import_obsidian5.ItemView {
     this.plugin = plugin;
   }
   getViewType() {
-    return DASHBOARD_VIEW_TYPE;
+    return COLLECTION_VIEW_TYPE;
   }
   getDisplayText() {
-    return "Collectors";
+    var _a, _b;
+    return (_b = (_a = this.collection) == null ? void 0 : _a.name) != null ? _b : "Collection";
   }
   getIcon() {
     return "layout-grid";
   }
-  async onOpen() {
-    await this.refresh();
+  canAcceptExtension(ext) {
+    return ext === "collection";
   }
-  async refresh() {
-    this.collections = await this.loadCollections();
-    if (this.selected) {
-      const updated = this.collections.find((c) => c.path === this.selected.path);
-      this.selected = updated != null ? updated : null;
-      if (!this.selected) this.screen = "list";
-    }
+  async onLoadFile(file) {
+    this.collection = await parseCollectionFile(file, this.app.vault);
     this.render();
-    this.runMigrations();
-    this.runAutoUpdates();
-    this.prefetchAllPrices();
-  }
-  runMigrations() {
-    const currentVersion = this.plugin.manifest.version;
-    for (const coll of this.collections) {
-      const file = this.app.vault.getAbstractFileByPath(coll.path);
-      if (file instanceof import_obsidian5.TFile) {
-        migrateCollection(file, coll.pluginVersion, currentVersion, this.app.vault);
+    if (this.collection && this.collection.format !== "arena") {
+      const ids = this.collection.cards.map((c) => ({
+        set: c.set.toLowerCase(),
+        collector_number: c.number
+      }));
+      const needed = ids.filter((id) => !this.plugin.priceService.isCached(id.set, id.collector_number));
+      if (needed.length > 0) {
+        this.showLoading("Loading prices\u2026");
+        await this.plugin.priceService.fetchPrices(ids, (s) => this.showLoading(`Rate limited \u2014 retrying in ${s}s\u2026`));
+        this.hideLoading();
+        this.render();
       }
     }
   }
-  // ── Price helpers ─────────────────────────────────────────────────────────────
+  async onUnloadFile(_file) {
+    this.contentEl.empty();
+    this.collection = null;
+  }
+  async reload() {
+    if (!this.file) return;
+    this.collection = await parseCollectionFile(this.file, this.app.vault);
+    this.render();
+    if (this.collection && this.collection.format !== "arena") {
+      const ids = this.collection.cards.map((c) => ({ set: c.set.toLowerCase(), collector_number: c.number }));
+      const needed = ids.filter((id) => !this.plugin.priceService.isCached(id.set, id.collector_number));
+      if (needed.length > 0) {
+        this.showLoading("Loading prices\u2026");
+        await this.plugin.priceService.fetchPrices(ids, (s) => this.showLoading(`Rate limited \u2014 retrying in ${s}s\u2026`));
+        this.hideLoading();
+        this.render();
+      }
+    }
+  }
+  render() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("collectors-root");
+    if (!this.collection) {
+      contentEl.createDiv({ cls: "col-empty", text: "Loading\u2026" });
+      return;
+    }
+    this.renderDetail(contentEl, this.collection);
+  }
+  // ── Price helpers ────────────────────────────────────────────────────────────
   cardPrice(card) {
     return this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith("_f"));
   }
@@ -1063,222 +1535,42 @@ var DashboardView = class extends import_obsidian5.ItemView {
     }
     return { owned, missing, loaded };
   }
-  async prefetchAllPrices() {
-    const ids = this.collections.filter((c) => c.format !== "arena").flatMap((c) => c.cards.map((card) => ({ set: card.set.toLowerCase(), collector_number: card.number })));
-    const needed = ids.filter((id) => !this.plugin.priceService.isCached(id.set, id.collector_number));
-    if (needed.length === 0) return;
-    await this.plugin.priceService.fetchPrices(ids);
-    this.render();
-  }
-  // ── Lifecycle ─────────────────────────────────────────────────────────────────
-  runAutoUpdates() {
-    const targets = this.collections.filter(
-      (c) => c.autoUpdate && (c.setCode || c.scryfallQuery)
-    );
-    for (const coll of targets) {
-      this.updateFromScryfall(coll, true).then((added) => {
-        if (added > 0) this.refresh();
-      });
-    }
-  }
-  async loadCollections() {
-    const { vault } = this.app;
-    const folder = this.plugin.settings.collectionsFolder;
-    const allFiles = vault.getFiles().filter((f) => f.extension === "collection");
-    let files;
-    if (folder) {
-      files = allFiles.filter((f) => {
-        var _a;
-        return f.path.startsWith(folder + "/") || ((_a = f.parent) == null ? void 0 : _a.path) === folder;
-      });
-    } else {
-      files = allFiles;
-    }
-    const results = await Promise.all(
-      files.map((f) => parseCollectionFile(f, vault))
-    );
-    return results.filter((c) => c !== null).sort((a, b) => a.name.localeCompare(b.name));
-  }
-  render() {
-    const content = this.contentEl;
-    content.empty();
-    content.addClass("collectors-root");
-    if (this.screen === "detail" && this.selected) {
-      this.renderDetail(content);
-    } else {
-      this.renderList(content);
-    }
-  }
-  // ── List screen ───────────────────────────────────────────────────────────────
-  renderList(root) {
-    const header = root.createDiv({ cls: "col-header col-header-stack" });
-    header.createEl("h2", { text: "Collectors", cls: "col-title" });
-    const actions = header.createDiv({ cls: "col-actions" });
-    const refreshBtn = actions.createEl("button", { cls: "col-btn-icon", attr: { title: "Refresh" } });
-    refreshBtn.innerHTML = "\u21BB";
-    refreshBtn.addEventListener("click", () => this.refresh());
-    const newBtn = actions.createEl("button", { cls: "col-btn", text: "+ New Collection" });
-    newBtn.addEventListener(
-      "click",
-      () => new NewCollectionModal(this.app, this.plugin, () => this.refresh()).open()
-    );
-    if (this.collections.length === 0) {
-      root.createDiv({ cls: "col-empty", text: "No collections found. Create one or configure the folder in settings." });
-      return;
-    }
-    this.renderHeroStats(root);
-    const grouped = this.groupByType(this.collections);
-    const order = ["mtg-set", "mtg-theme", "custom"];
-    const labels = {
-      "mtg-set": "MTG Sets",
-      "mtg-theme": "Theme Collections",
-      "custom": "Custom Collections"
-    };
-    for (const type of order) {
-      const colls = grouped[type];
-      if (!(colls == null ? void 0 : colls.length)) continue;
-      const section = root.createDiv({ cls: "col-section" });
-      section.createEl("h3", { cls: "col-section-title", text: labels[type] });
-      const grid = section.createDiv({ cls: "col-collection-grid" });
-      for (const coll of colls) {
-        this.renderCollectionCard(grid, coll);
-      }
-    }
-  }
-  renderHeroStats(root) {
-    const allCards = this.collections.flatMap((c) => c.cards);
-    const totalOwned = this.collections.reduce((s, c) => s + c.owned, 0);
-    const totalCards = this.collections.reduce((s, c) => s + c.total, 0);
-    let totalInvested = 0, totalMissing = 0, pricesLoaded = false;
-    for (const card of allCards) {
-      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
-      pricesLoaded = true;
-      const p = this.cardPrice(card);
-      if (typeof p === "number") {
-        if (card.owned) totalInvested += p;
-        else totalMissing += p;
-      }
-    }
-    const hero = root.createDiv({ cls: "col-hero" });
-    this.statBox(hero, String(this.collections.length), "Collections", "");
-    this.statBox(hero, `${totalOwned} / ${totalCards}`, "Cards owned", "col-hero-owned");
-    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : "\u2026", `Invested \xB7 ${this.plugin.priceService.sourceLabel()}`, "col-hero-money");
-    this.statBox(hero, pricesLoaded ? this.fmt(totalMissing) : "\u2026", "To complete", "col-hero-missing");
-  }
   statBox(container, value, label, mod) {
     const box = container.createDiv({ cls: `col-hero-box${mod ? " " + mod : ""}` });
     box.createEl("span", { cls: "col-hero-value", text: value });
     box.createEl("span", { cls: "col-hero-label", text: label });
   }
-  renderCollectionCard(container, coll) {
-    var _a, _b;
-    const pct2 = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
-    const missing = coll.total - coll.owned;
-    const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll.cards);
-    const card = container.createDiv({ cls: "col-card" });
-    const thumb = card.createDiv({ cls: "col-card-thumb" });
-    const thumbCard = coll.cards.find((c) => c.imageUrl);
-    if (thumbCard == null ? void 0 : thumbCard.imageUrl) {
-      const img = thumb.createEl("img", {
-        cls: "col-card-thumb-img",
-        attr: { src: thumbCard.imageUrl, alt: coll.name, loading: "lazy" }
-      });
-      img.addEventListener("error", () => {
-        var _a2, _b2;
-        img.remove();
-        thumb.createEl("div", { cls: "col-card-thumb-fallback", text: (_b2 = (_a2 = coll.name[0]) == null ? void 0 : _a2.toUpperCase()) != null ? _b2 : "?" });
-      });
-    } else {
-      thumb.createEl("div", { cls: "col-card-thumb-fallback", text: (_b = (_a = coll.name[0]) == null ? void 0 : _a.toUpperCase()) != null ? _b : "?" });
-    }
-    const info = card.createDiv({ cls: "col-card-info" });
-    const nameRow = info.createDiv({ cls: "col-card-name-row" });
-    nameRow.createEl("span", { cls: "col-card-name", text: coll.name });
-    if (coll.setCode) nameRow.createEl("span", { cls: "col-badge", text: coll.setCode });
-    if (coll.format === "arena") nameRow.createEl("span", { cls: "col-badge col-badge-arena", text: "Arena" });
-    const progressWrap = info.createDiv({ cls: "col-progress-wrap" });
-    const bar = progressWrap.createDiv({ cls: "col-progress-bar" });
-    bar.createDiv({ cls: "col-progress-fill" }).style.width = `${pct2}%`;
-    progressWrap.createEl("span", { cls: "col-pct", text: `${pct2}%` });
-    const stats = info.createDiv({ cls: "col-stats" });
-    stats.createEl("span", { cls: "col-stat-owned", text: `${coll.owned} owned` });
-    stats.createEl("span", { cls: "col-dot", text: "\xB7" });
-    stats.createEl("span", { text: `${coll.total} total` });
-    if (missing > 0) {
-      stats.createEl("span", { cls: "col-dot", text: "\xB7" });
-      stats.createEl("span", { cls: "col-stat-missing", text: `${missing} missing` });
-    }
-    if (pricesLoaded) {
-      const priceRow = info.createDiv({ cls: "col-price-row" });
-      priceRow.createEl("span", { cls: "col-price-invested", text: `${this.fmt(ownedVal)} invested` });
-      if (missingVal > 0) {
-        priceRow.createEl("span", { cls: "col-dot", text: "\xB7" });
-        priceRow.createEl("span", { cls: "col-price-missing", text: `${this.fmt(missingVal)} to complete` });
-      }
-    }
-    const cardActions = info.createDiv({ cls: "col-card-actions" });
-    const detailBtn = cardActions.createEl("button", { cls: "col-btn col-btn-view", attr: { title: "View cards" } });
-    detailBtn.innerHTML = "\u229E View";
-    detailBtn.addEventListener("click", () => {
-      this.selected = coll;
-      this.screen = "detail";
-      this.filter = "all";
-      this.finishFilter = "all";
-      this.searchQuery = "";
-      this.render();
-    });
-    if (coll.setCode || coll.scryfallQuery) {
-      const updateBtn = cardActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Update from Scryfall" } });
-      updateBtn.innerHTML = "\u27F3";
-      updateBtn.addEventListener("click", async () => {
-        updateBtn.disabled = true;
-        await this.updateFromScryfall(coll);
-        updateBtn.disabled = false;
-      });
-    }
-    const editBtn = cardActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Edit collection" } });
-    editBtn.innerHTML = "\u270E";
-    editBtn.addEventListener("click", () => {
-      const file = this.app.vault.getAbstractFileByPath(coll.path);
-      if (!(file instanceof import_obsidian5.TFile)) return;
-      new NewCollectionModal(this.app, this.plugin, () => this.refresh(), { collection: coll, file }).open();
-    });
-    const openBtn = cardActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Open file" } });
-    openBtn.innerHTML = "\u2197";
-    openBtn.addEventListener("click", () => this.openFile(coll.path));
-  }
-  // ── Detail screen ─────────────────────────────────────────────────────────────
-  renderDetail(root) {
-    const coll = this.selected;
+  // ── Detail view ──────────────────────────────────────────────────────────────
+  renderDetail(root, coll) {
     const header = root.createDiv({ cls: "col-header" });
-    const backBtn = header.createEl("button", { cls: "col-btn-icon", attr: { title: "Back" } });
-    backBtn.innerHTML = "\u2190";
-    backBtn.addEventListener("click", () => {
-      this.screen = "list";
-      this.selected = null;
-      this.render();
-    });
     const titleWrap = header.createDiv({ cls: "col-header-title" });
     titleWrap.createEl("h2", { cls: "col-title", text: coll.name });
     if (coll.setCode) titleWrap.createEl("span", { cls: "col-badge", text: coll.setCode });
+    if (coll.format === "arena") titleWrap.createEl("span", { cls: "col-badge col-badge-arena", text: "Arena" });
     const headerActions = header.createDiv({ cls: "col-actions" });
     if (coll.setCode || coll.scryfallQuery) {
       const updateBtn = headerActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Update from Scryfall" } });
       updateBtn.innerHTML = "\u27F3";
       updateBtn.addEventListener("click", async () => {
         updateBtn.disabled = true;
+        this.showLoading("Fetching cards from Scryfall\u2026");
         await this.updateFromScryfall(coll);
+        this.hideLoading();
         updateBtn.disabled = false;
-        await this.refresh();
+        await this.reload();
       });
     }
     const addCardBtn = headerActions.createEl("button", { cls: "col-btn", text: "+ Card" });
     addCardBtn.addEventListener("click", () => {
-      new CardSearchModal(this.app, coll, () => this.refresh()).open();
+      new CardSearchModal(this.app, coll, () => this.reload()).open();
     });
-    const openBtn = headerActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Open file" } });
-    openBtn.innerHTML = "\u2197";
-    openBtn.addEventListener("click", () => this.openFile(coll.path));
+    const editBtn = headerActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Edit collection" } });
+    editBtn.innerHTML = "\u270E";
+    editBtn.addEventListener("click", () => {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (!(file instanceof import_obsidian6.TFile)) return;
+      new NewCollectionModal(this.app, this.plugin, () => this.reload(), { collection: coll, file }).open();
+    });
     this.renderDetailHero(root, coll);
     const controls = root.createDiv({ cls: "col-controls" });
     const searchInput = controls.createEl("input", {
@@ -1293,23 +1585,18 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const hasNonFoil = coll.cards.some((c) => c.id.endsWith("_n"));
     if (hasFoil && hasNonFoil) {
       const finishWrap = row2.createDiv({ cls: "col-finish-wrap" });
-      const finishOptions = [
+      for (const fo of [
         { value: "foil", label: "\u2726 Foil" },
         { value: "nonfoil", label: "\u25C7 Normal" }
-      ];
-      for (const fo of finishOptions) {
+      ]) {
         const lbl = finishWrap.createEl("label", { cls: "col-finish-label" });
         const cb = lbl.createEl("input", { attr: { type: "checkbox" } });
         cb.checked = this.finishFilter === fo.value || this.finishFilter === "all";
         lbl.createEl("span", { text: fo.label });
         cb.addEventListener("change", () => {
           const inputs = finishWrap.querySelectorAll("input");
-          const foilChecked = inputs[0].checked;
-          const normalChecked = inputs[1].checked;
-          if (foilChecked && normalChecked) this.finishFilter = "all";
-          else if (foilChecked) this.finishFilter = "foil";
-          else if (normalChecked) this.finishFilter = "nonfoil";
-          else this.finishFilter = "all";
+          const f = inputs[0].checked, n = inputs[1].checked;
+          this.finishFilter = f && n ? "all" : f ? "foil" : n ? "nonfoil" : "all";
           this.renderCards(grid, coll);
         });
       }
@@ -1351,13 +1638,6 @@ var DashboardView = class extends import_obsidian5.ItemView {
       this.renderCards(grid, coll);
     });
     this.renderCards(grid, coll);
-    if (coll.format !== "arena") {
-      const needsFetch = coll.cards.some((c) => !this.plugin.priceService.isCached(c.set.toLowerCase(), c.number));
-      if (needsFetch) {
-        const ids = coll.cards.map((c) => ({ set: c.set.toLowerCase(), collector_number: c.number }));
-        this.plugin.priceService.fetchPrices(ids).then(() => this.render());
-      }
-    }
   }
   renderDetailHero(root, coll) {
     const pct2 = coll.total > 0 ? Math.round(coll.owned / coll.total * 100) : 0;
@@ -1369,7 +1649,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     progWrap.createDiv({ cls: "col-progress-bar" }).createDiv({ cls: "col-progress-fill" }).style.width = `${pct2}%`;
     progBox.createEl("span", { cls: "col-hero-value col-hero-pct", text: `${pct2}%` });
     if (pricesLoaded) {
-      this.statBox(hero, this.fmt(ownedVal), "Invested", "col-hero-money");
+      this.statBox(hero, this.fmt(ownedVal), `Invested \xB7 ${this.plugin.priceService.sourceLabel()}`, "col-hero-money");
       this.statBox(hero, this.fmt(missingVal), "To complete", "col-hero-missing");
     }
   }
@@ -1381,9 +1661,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
       const isFoil = card.id.endsWith("_f");
       if (this.finishFilter === "foil" && !isFoil) return false;
       if (this.finishFilter === "nonfoil" && isFoil) return false;
-      if (this.searchQuery) {
-        return card.name.toLowerCase().includes(this.searchQuery.toLowerCase());
-      }
+      if (this.searchQuery) return card.name.toLowerCase().includes(this.searchQuery.toLowerCase());
       return true;
     });
     const paint = (sorted) => {
@@ -1392,9 +1670,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
         grid.createDiv({ cls: "col-empty", text: "No cards match this filter." });
         return;
       }
-      for (const card of sorted) {
-        this.renderCardTile(grid, card, coll);
-      }
+      for (const card of sorted) this.renderCardTile(grid, card, coll);
     };
     if (this.sortBy === "name") {
       paint([...filtered].sort((a, b) => a.name.localeCompare(b.name)));
@@ -1411,9 +1687,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
       const dir2 = this.sortBy === "price-desc" ? -1 : 1;
       paint([...filtered].sort((a, b) => {
         var _a, _b;
-        const pa = (_a = this.cardPrice(a)) != null ? _a : -1;
-        const pb = (_b = this.cardPrice(b)) != null ? _b : -1;
-        return (pa - pb) * dir2;
+        return (((_a = this.cardPrice(a)) != null ? _a : -1) - ((_b = this.cardPrice(b)) != null ? _b : -1)) * dir2;
       }));
       return;
     }
@@ -1438,9 +1712,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const isFoil = card.id.endsWith("_f");
     const tileCls = ["col-tile", card.owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
     const tile = grid.createDiv({ cls: tileCls });
-    if (isFoil) {
-      tile.createDiv({ cls: "col-foil-badge", text: "F" });
-    }
+    if (isFoil) tile.createDiv({ cls: "col-foil-badge", text: "F" });
     if (card.imageUrl) {
       const imgWrap = tile.createDiv({ cls: "col-tile-img-wrap" });
       const img = imgWrap.createEl("img", {
@@ -1495,7 +1767,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
       clearTimeout(this.saveTimers.get(card.id));
       this.saveTimers.set(card.id, setTimeout(async () => {
         const file = this.app.vault.getAbstractFileByPath(coll.path);
-        if (file instanceof import_obsidian5.TFile) await setCardCount(file, card.id, card.count, this.app.vault);
+        if (file instanceof import_obsidian6.TFile) await setCardCount(file, card.id, card.count, this.app.vault);
         this.saveTimers.delete(card.id);
       }, 400));
     };
@@ -1519,55 +1791,52 @@ var DashboardView = class extends import_obsidian5.ItemView {
     if (heroValues[2]) heroValues[2].textContent = this.fmt(ov);
     if (heroValues[3]) heroValues[3].textContent = this.fmt(mv);
   }
-  // ── Scryfall update ───────────────────────────────────────────────────────────
-  async updateFromScryfall(coll, silent = false) {
+  // ── Loading overlay ──────────────────────────────────────────────────────────
+  showLoading(label = "Updating\u2026") {
+    let overlay = this.contentEl.querySelector(".col-loading-overlay");
+    if (!overlay) {
+      overlay = this.contentEl.createDiv({ cls: "col-loading-overlay" });
+      overlay.createDiv({ cls: "col-loading-spinner" });
+      overlay.createDiv({ cls: "col-loading-label", text: label });
+    } else {
+      const lbl = overlay.querySelector(".col-loading-label");
+      if (lbl) lbl.textContent = label;
+    }
+    requestAnimationFrame(() => overlay.addClass("col-loading-visible"));
+  }
+  hideLoading() {
+    const overlay = this.contentEl.querySelector(".col-loading-overlay");
+    if (!overlay) return;
+    overlay.removeClass("col-loading-visible");
+    setTimeout(() => overlay.remove(), 220);
+  }
+  // ── Scryfall update ──────────────────────────────────────────────────────────
+  async updateFromScryfall(coll) {
     var _a, _b;
-    if (!silent) new import_obsidian5.Notice(`Fetching cards for "${coll.name}"...`);
+    new import_obsidian6.Notice(`Fetching cards for "${coll.name}"...`);
     try {
       const finish = (_a = coll.finishImport) != null ? _a : "all";
       const unique = coll.allPrints === false ? "cards" : "prints";
-      const rawCards = coll.setCode ? await fetchSetCards(coll.setCode, (p) => {
-        if (!silent) new import_obsidian5.Notice(`Fetching page ${p}...`);
-      }, unique) : await fetchSearchCards(
+      const onPage = (p) => this.showLoading(`Fetching page ${p}\u2026`);
+      const onRateLimit = (s) => this.showLoading(`Rate limited \u2014 retrying in ${s}s\u2026`);
+      const rawCards = coll.setCode ? await fetchSetCards(coll.setCode, onPage, unique, onRateLimit) : await fetchSearchCards(
         coll.scryfallQuery,
-        (p) => {
-          if (!silent) new import_obsidian5.Notice(`Fetching page ${p}...`);
-        },
-        (_b = coll.scryfallOrder) != null ? _b : "released"
+        onPage,
+        (_b = coll.scryfallOrder) != null ? _b : "released",
+        onRateLimit
       );
       const cards = finish === "all" ? rawCards : rawCards.map((c) => ({ ...c, finishes: c.finishes.filter((f) => f === finish) })).filter((c) => c.finishes.length > 0);
       const file = this.app.vault.getAbstractFileByPath(coll.path);
-      if (!(file instanceof import_obsidian5.TFile)) return 0;
+      if (!(file instanceof import_obsidian6.TFile)) return;
       const rows = cards.flatMap(cardToMarkdownRows);
       const added = await appendCards(file, rows, this.app.vault);
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
       await patchFrontmatter(file, "last-fetched", today, this.app.vault);
-      if (!silent) {
-        new import_obsidian5.Notice(
-          added > 0 ? `Added ${added} new cards to "${coll.name}".` : `"${coll.name}" is already up to date.`
-        );
-      } else if (added > 0) {
-        new import_obsidian5.Notice(`Auto-update: added ${added} new cards to "${coll.name}".`);
-      }
-      return added;
+      new import_obsidian6.Notice(
+        added > 0 ? `Added ${added} new cards to "${coll.name}".` : `"${coll.name}" is already up to date.`
+      );
     } catch (e) {
-      if (!silent) new import_obsidian5.Notice(`Scryfall update failed: ${e.message}`);
-      return 0;
-    }
-  }
-  // ── Helpers ───────────────────────────────────────────────────────────────────
-  groupByType(collections) {
-    var _a, _b;
-    const result = {};
-    for (const c of collections) {
-      ((_b = result[_a = c.type]) != null ? _b : result[_a] = []).push(c);
-    }
-    return result;
-  }
-  async openFile(path) {
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (file instanceof import_obsidian5.TFile) {
-      await this.app.workspace.getLeaf(false).openFile(file);
+      new import_obsidian6.Notice(`Scryfall update failed: ${e.message}`);
     }
   }
 };
@@ -1576,7 +1845,6 @@ var DashboardView = class extends import_obsidian5.ItemView {
 var DEFAULT_SETTINGS = {
   collectionsFolder: "",
   autoDetect: true,
-  cardViewInFiles: true,
   priceSource: "scryfall-usd",
   tcgplayerKey: "",
   cardmarketAppToken: "",
@@ -1587,29 +1855,24 @@ var DEFAULT_SETTINGS = {
 };
 
 // src/settings.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 var PRICE_SOURCE_LABELS = {
   "scryfall-usd": "Scryfall \u2014 USD",
   "scryfall-eur": "Scryfall \u2014 EUR",
   "tcgplayer": "TCGPlayer (API key required)",
   "cardmarket": "Cardmarket (credentials required)"
 };
-var GAME_META = {
-  mtg: { icon: "\u2726", label: "Magic: The Gathering", desc: "MTG sets, theme collections, and custom lists." },
-  pokemon: { icon: "\u26A1", label: "Pok\xE9mon", desc: "Pok\xE9mon TCG sets and collections." },
-  onepiece: { icon: "\u2620", label: "One Piece", desc: "One Piece Card Game sets." },
-  yugioh: { icon: "\u{1F441}", label: "Yu-Gi-Oh!", desc: "Yu-Gi-Oh! sets and collections." }
-};
-var GAME_ORDER2 = ["mtg", "pokemon", "onepiece", "yugioh"];
-var PANES = [
-  { id: "general", icon: "\u2699\uFE0F", label: "General" },
-  { id: "games", icon: "\u{1F3AE}", label: "Games" },
-  { id: "prices", icon: "\u{1F4B0}", label: "Prices" }
+var TABS = [
+  { id: "general", icon: "\u2699", label: "General" },
+  { id: "mtg", icon: "\u2726", label: "Magic: The Gathering" },
+  { id: "pokemon", icon: "\u26A1", label: "Pok\xE9mon" },
+  { id: "onepiece", icon: "\u2620", label: "One Piece" },
+  { id: "yugioh", icon: "\u{1F441}", label: "Yu-Gi-Oh!" }
 ];
-var CollectorsSettingTab = class extends import_obsidian6.PluginSettingTab {
+var CollectorsSettingTab = class extends import_obsidian7.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
-    this.activePane = "general";
+    this.activeTab = "general";
     this.plugin = plugin;
   }
   display() {
@@ -1620,84 +1883,76 @@ var CollectorsSettingTab = class extends import_obsidian6.PluginSettingTab {
     const body = containerEl.createDiv({ cls: "col-settings-body" });
     const paneEls = {};
     const tabEls = {};
-    const switchPane = (id) => {
-      this.activePane = id;
+    const switchTab = (id) => {
+      this.activeTab = id;
       for (const k of Object.keys(paneEls)) {
         paneEls[k].toggleClass("col-settings-pane-active", k === id);
         tabEls[k].toggleClass("col-settings-tab-active", k === id);
       }
     };
-    for (const { id, icon, label } of PANES) {
+    for (const { id, icon, label } of TABS) {
       const tab = tabBar.createEl("button", { cls: "col-settings-tab" });
       tab.createEl("span", { cls: "col-settings-tab-icon", text: icon });
       tab.createEl("span", { cls: "col-settings-tab-label", text: label });
-      tab.addEventListener("click", () => switchPane(id));
+      tab.addEventListener("click", () => switchTab(id));
       tabEls[id] = tab;
       paneEls[id] = body.createDiv({ cls: "col-settings-pane" });
     }
     this.buildGeneral(paneEls["general"]);
-    this.buildGames(paneEls["games"]);
-    this.buildPrices(paneEls["prices"]);
-    switchPane(this.activePane);
+    this.buildMTG(paneEls["mtg"]);
+    this.buildComingSoon(paneEls["pokemon"], "pokemon", "\u26A1", "Pok\xE9mon");
+    this.buildComingSoon(paneEls["onepiece"], "onepiece", "\u2620", "One Piece");
+    this.buildComingSoon(paneEls["yugioh"], "yugioh", "\u{1F441}", "Yu-Gi-Oh!");
+    switchTab(this.activeTab);
   }
   // ── Helpers ──────────────────────────────────────────────────────────────────
-  panelHeader(el, text) {
-    el.createEl("h3", { cls: "col-settings-panel-title", text });
+  sectionTitle(el, text) {
+    el.createEl("h3", { cls: "col-settings-section-title", text });
+  }
+  sectionDesc(el, text) {
+    el.createEl("p", { cls: "col-settings-desc", text });
   }
   // ── General ───────────────────────────────────────────────────────────────────
   buildGeneral(el) {
-    this.panelHeader(el, "Collections");
-    new import_obsidian6.Setting(el).setName("Collections folder").setDesc("Folder to scan for .collection files. Leave empty to scan the entire vault.").addText(
+    this.sectionTitle(el, "Collections");
+    new import_obsidian7.Setting(el).setName("Collections folder").setDesc("Folder to scan for .collection files. Leave empty to scan the entire vault.").addText(
       (t) => t.setPlaceholder("e.g. 004 MTG").setValue(this.plugin.settings.collectionsFolder).onChange(async (v) => {
         this.plugin.settings.collectionsFolder = v.trim();
         await this.plugin.saveSettings();
       })
     );
-    this.panelHeader(el, "Display");
-    new import_obsidian6.Setting(el).setName("Card view in files").setDesc("Show collection cards as visual tiles in reading mode. Disable to show the raw table.").addToggle(
-      (t) => t.setValue(this.plugin.settings.cardViewInFiles).onChange(async (v) => {
-        this.plugin.settings.cardViewInFiles = v;
-        await this.plugin.saveSettings();
-      })
-    );
   }
-  // ── Games ─────────────────────────────────────────────────────────────────────
-  buildGames(el) {
-    this.panelHeader(el, "TCG Games");
-    el.createEl("p", {
-      cls: "col-settings-desc",
-      text: "Choose which games appear as tabs in the New Collection wizard. Disabled games are hidden \u2014 their existing collections are not affected."
-    });
+  // ── MTG ───────────────────────────────────────────────────────────────────────
+  buildMTG(el) {
     if (!this.plugin.settings.enabledGames) {
       this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
     }
-    for (const game of GAME_ORDER2) {
-      const meta = GAME_META[game];
-      new import_obsidian6.Setting(el).setName(`${meta.icon}  ${meta.label}`).setDesc(meta.desc).addToggle(
-        (t) => {
-          var _a;
-          return t.setValue((_a = this.plugin.settings.enabledGames[game]) != null ? _a : true).onChange(async (v) => {
-            this.plugin.settings.enabledGames[game] = v;
-            await this.plugin.saveSettings();
-          });
-        }
-      );
-    }
-  }
-  // ── Prices ────────────────────────────────────────────────────────────────────
-  buildPrices(el) {
-    this.panelHeader(el, "Price Source");
-    el.createEl("p", {
-      cls: "col-settings-desc",
-      text: "Choose where to fetch card prices. If a provider has no API key configured, Scryfall USD is used as fallback."
+    this.sectionTitle(el, "Magic: The Gathering");
+    new import_obsidian7.Setting(el).setName("Enable Magic: The Gathering").setDesc("Show MTG as an option when creating new collections.").addToggle(
+      (t) => {
+        var _a;
+        return t.setValue((_a = this.plugin.settings.enabledGames["mtg"]) != null ? _a : true).onChange(async (v) => {
+          this.plugin.settings.enabledGames["mtg"] = v;
+          await this.plugin.saveSettings();
+        });
+      }
+    );
+    this.sectionTitle(el, "Card Data");
+    this.sectionDesc(el, "Source used to fetch card lists and images.");
+    new import_obsidian7.Setting(el).setName("Source").addDropdown((d) => {
+      d.addOption("scryfall", "Scryfall");
+      d.setValue("scryfall");
+      d.setDisabled(true);
     });
+    this.sectionTitle(el, "Prices");
+    this.sectionDesc(el, "Choose where to fetch card prices. If a provider has no API key configured, Scryfall USD is used as fallback.");
     const tcgSection = el.createDiv({ cls: "col-settings-sub" });
     const cmSection = el.createDiv({ cls: "col-settings-sub" });
     const updateVisibility = (source) => {
       tcgSection.toggleClass("col-settings-sub-active", source === "tcgplayer");
       cmSection.toggleClass("col-settings-sub-active", source === "cardmarket");
     };
-    new import_obsidian6.Setting(el).setName("Provider").addDropdown((d) => {
+    new import_obsidian7.Setting(el).setName("Provider").addDropdown((d) => {
       for (const [val, label] of Object.entries(PRICE_SOURCE_LABELS)) {
         d.addOption(val, label);
       }
@@ -1709,29 +1964,23 @@ var CollectorsSettingTab = class extends import_obsidian6.PluginSettingTab {
         updateVisibility(v);
       });
     });
-    this.panelHeader(tcgSection, "TCGPlayer");
-    tcgSection.createEl("p", {
-      cls: "col-settings-desc",
-      text: "Get your public API key at developer.tcgplayer.com. Uses market price (USD)."
-    });
-    new import_obsidian6.Setting(tcgSection).setName("Public API key").setDesc("Bearer token for TCGPlayer API v1.39.0.").addText(
+    this.sectionTitle(tcgSection, "TCGPlayer");
+    this.sectionDesc(tcgSection, "Get your public API key at developer.tcgplayer.com. Uses market price (USD).");
+    new import_obsidian7.Setting(tcgSection).setName("Public API key").setDesc("Bearer token for TCGPlayer API v1.39.0.").addText(
       (t) => t.setPlaceholder("Paste your public key here").setValue(this.plugin.settings.tcgplayerKey).onChange(async (v) => {
         this.plugin.settings.tcgplayerKey = v.trim();
         await this.plugin.saveSettings();
       })
     );
-    this.panelHeader(cmSection, "Cardmarket");
-    cmSection.createEl("p", {
-      cls: "col-settings-desc",
-      text: "OAuth 1.0a credentials from your Cardmarket developer account. Uses TREND price (EUR)."
-    });
+    this.sectionTitle(cmSection, "Cardmarket");
+    this.sectionDesc(cmSection, "OAuth 1.0a credentials from your Cardmarket developer account. Uses TREND price (EUR).");
     for (const [key, label, placeholder] of [
       ["cardmarketAppToken", "App token", "App token"],
       ["cardmarketAppSecret", "App secret", "App secret"],
       ["cardmarketAccessToken", "Access token", "Access token"],
       ["cardmarketAccessSecret", "Access token secret", "Access token secret"]
     ]) {
-      new import_obsidian6.Setting(cmSection).setName(label).addText(
+      new import_obsidian7.Setting(cmSection).setName(label).addText(
         (t) => t.setPlaceholder(placeholder).setValue(this.plugin.settings[key]).onChange(async (v) => {
           this.plugin.settings[key] = v.trim();
           await this.plugin.saveSettings();
@@ -1739,10 +1988,34 @@ var CollectorsSettingTab = class extends import_obsidian6.PluginSettingTab {
       );
     }
   }
+  // ── Coming soon ───────────────────────────────────────────────────────────────
+  buildComingSoon(el, game, icon, label) {
+    if (!this.plugin.settings.enabledGames) {
+      this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
+    }
+    this.sectionTitle(el, `${icon}  ${label}`);
+    new import_obsidian7.Setting(el).setName(`Enable ${label}`).setDesc("Show this game as an option when creating new collections.").addToggle(
+      (t) => {
+        var _a;
+        return t.setValue((_a = this.plugin.settings.enabledGames[game]) != null ? _a : true).onChange(async (v) => {
+          this.plugin.settings.enabledGames[game] = v;
+          await this.plugin.saveSettings();
+        });
+      }
+    );
+    this.sectionTitle(el, "Card Data");
+    const cardBox = el.createDiv({ cls: "col-settings-coming-soon" });
+    cardBox.createEl("span", { cls: "col-settings-coming-soon-icon", text: "\u{1F6A7}" });
+    cardBox.createEl("span", { text: `No card data source available for ${label} yet.` });
+    this.sectionTitle(el, "Prices");
+    const priceBox = el.createDiv({ cls: "col-settings-coming-soon" });
+    priceBox.createEl("span", { cls: "col-settings-coming-soon-icon", text: "\u{1F6A7}" });
+    priceBox.createEl("span", { text: `No price data available for ${label} yet.` });
+  }
 };
 
 // src/PriceService.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 var providerCache = /* @__PURE__ */ new Map();
 function cacheKey(set, number) {
   return `${set.toLowerCase()}#${number}`;
@@ -1809,8 +2082,8 @@ var PriceService = class {
    * Fetch prices for a list of cards.
    * Always calls Scryfall first (for fallback + external IDs), then the provider if configured.
    */
-  async fetchPrices(identifiers) {
-    await fetchScryfallData(identifiers);
+  async fetchPrices(identifiers, onRateLimit) {
+    await fetchScryfallData(identifiers, onRateLimit);
     const src = this.effectiveSource();
     if (src === "tcgplayer") {
       await this.fetchTCGPlayerPrices(identifiers);
@@ -1849,7 +2122,7 @@ var PriceService = class {
     for (let i = 0; i < uniqueIds.length; i += 250) {
       const batch = uniqueIds.slice(i, i + 250);
       try {
-        const res = await (0, import_obsidian7.requestUrl)({
+        const res = await (0, import_obsidian8.requestUrl)({
           url: `https://api.tcgplayer.com/v1.39.0/pricing/product/${batch.join(",")}`,
           headers: {
             Authorization: `Bearer ${this.settings.tcgplayerKey}`,
@@ -1907,7 +2180,7 @@ var PriceService = class {
             cardmarketAccessToken,
             cardmarketAccessSecret
           );
-          const res = await (0, import_obsidian7.requestUrl)({ url, headers: { Authorization: auth, Accept: "application/json" } });
+          const res = await (0, import_obsidian8.requestUrl)({ url, headers: { Authorization: auth, Accept: "application/json" } });
           if (res.status < 200 || res.status >= 300) return;
           const data = res.json;
           const pg = data.product.priceGuide;
@@ -1959,17 +2232,17 @@ async function buildOAuth1Header(method, url, appToken, appSecret, accessToken, 
 }
 
 // src/main.ts
-var CollectorsPlugin = class extends import_obsidian8.Plugin {
+var CollectorsPlugin = class extends import_obsidian9.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
-    this.saveTimers = /* @__PURE__ */ new Map();
   }
   async onload() {
     await this.loadSettings();
     this.priceService = new PriceService(this.settings);
     this.registerView(DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this));
-    this.registerExtensions(["collection"], "markdown");
+    this.registerView(COLLECTION_VIEW_TYPE, (leaf) => new CollectionView(leaf, this));
+    this.registerExtensions(["collection"], COLLECTION_VIEW_TYPE);
     this.addRibbonIcon("layout-grid", "Collectors Dashboard", () => this.activateDashboard());
     this.addCommand({
       id: "open-dashboard",
@@ -1982,12 +2255,6 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
       callback: () => new NewCollectionModal(this.app, this, () => this.refreshDashboard()).open()
     });
     this.addSettingTab(new CollectorsSettingTab(this.app, this));
-    this.registerMarkdownPostProcessor((element, context) => {
-      if (!this.settings.cardViewInFiles) return;
-      element.querySelectorAll("table").forEach((table) => {
-        this.transformTableToCardView(table, context.sourcePath);
-      });
-    });
   }
   onunload() {
     this.app.workspace.detachLeavesOfType(DASHBOARD_VIEW_TYPE);
@@ -2009,85 +2276,6 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
     const leaf = workspace.getLeaf("tab");
     await leaf.setViewState({ type: DASHBOARD_VIEW_TYPE, active: true });
     workspace.revealLeaf(leaf);
-  }
-  transformTableToCardView(table, sourcePath) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
-    const rows = Array.from(table.querySelectorAll("tbody tr"));
-    if (rows.length === 0) return;
-    const firstCb = rows[0].querySelector('td input[type="checkbox"]');
-    if (!((_a = firstCb == null ? void 0 : firstCb.id) == null ? void 0 : _a.match(/^[a-f0-9]{8}_(f|n)$/))) return;
-    const grid = createDiv({ cls: "col-card-grid" });
-    for (const row of rows) {
-      const cells = row.querySelectorAll("td");
-      if (cells.length < 7) continue;
-      const cb = cells[0].querySelector('input[type="checkbox"]');
-      if (!(cb == null ? void 0 : cb.id)) continue;
-      const imageUrl = (_c = (_b = cells[1].querySelector("img")) == null ? void 0 : _b.getAttribute("src")) != null ? _c : "";
-      const name = (_e = (_d = cells[2].textContent) == null ? void 0 : _d.trim()) != null ? _e : "";
-      const rarity = (_g = (_f = cells[4].textContent) == null ? void 0 : _f.trim().toLowerCase()) != null ? _g : "";
-      const set = (_i = (_h = cells[5].textContent) == null ? void 0 : _h.trim()) != null ? _i : "";
-      const number = (_k = (_j = cells[6].textContent) == null ? void 0 : _j.trim()) != null ? _k : "";
-      const id = cb.id;
-      const isFoil = id.endsWith("_f");
-      const isChecked = cb.checked;
-      const rawCount = cb.getAttribute("data-count");
-      let count = rawCount ? parseInt(rawCount) : isChecked ? 1 : 0;
-      let owned = count > 0;
-      const tileCls = ["col-tile", owned ? "col-tile-owned" : "", isFoil ? "col-tile-foil" : ""].filter(Boolean).join(" ");
-      const tile = grid.createDiv({ cls: tileCls });
-      if (isFoil) {
-        tile.createDiv({ cls: "col-foil-badge", text: "F" });
-      }
-      if (imageUrl.startsWith("https://")) {
-        const imgWrap = tile.createDiv({ cls: "col-tile-img-wrap" });
-        const img = imgWrap.createEl("img", {
-          cls: "col-tile-img",
-          attr: { src: imageUrl, alt: name, loading: "lazy" }
-        });
-        img.addEventListener("error", () => {
-          var _a2;
-          const fb = createDiv({ cls: "col-tile-img-fallback" });
-          fb.setText((_a2 = name[0]) != null ? _a2 : "?");
-          img.replaceWith(fb);
-        });
-        tile.addEventListener("click", () => openCardZoom(imageUrl, name, isFoil));
-      } else {
-        tile.createDiv({ cls: "col-tile-img-fallback" }).setText((_l = name[0]) != null ? _l : "?");
-      }
-      const footer = tile.createDiv({ cls: "col-tile-footer" });
-      footer.createEl("span", { cls: "col-tile-name", text: name });
-      const meta = footer.createDiv({ cls: "col-tile-meta" });
-      meta.createEl("span", { cls: `col-rarity col-rarity-${rarity}`, text: (_n = (_m = rarity[0]) == null ? void 0 : _m.toUpperCase()) != null ? _n : "" });
-      meta.createEl("span", { text: `${set} #${number}` });
-      const countEl = meta.createEl("span", {
-        cls: `col-tile-count${count > 0 ? " col-tile-count-owned" : ""}`,
-        text: `\xD7${count}`
-      });
-      footer.createEl("span", { cls: "col-tile-price col-tile-price-empty", text: "\u2014" });
-      const applyCount = (delta, e) => {
-        e.stopPropagation();
-        const newCount = Math.max(0, count + delta);
-        if (newCount === count) return;
-        count = newCount;
-        owned = count > 0;
-        countEl.textContent = `\xD7${count}`;
-        countEl.className = `col-tile-count${count > 0 ? " col-tile-count-owned" : ""}`;
-        tile.toggleClass("col-tile-owned", owned);
-        clearTimeout(this.saveTimers.get(id));
-        this.saveTimers.set(id, setTimeout(async () => {
-          const file = this.app.vault.getAbstractFileByPath(sourcePath);
-          if (file instanceof import_obsidian8.TFile) await setCardCount(file, id, count, this.app.vault);
-          this.saveTimers.delete(id);
-        }, 400));
-      };
-      const removeBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-remove", attr: { title: "Remove one copy" } });
-      removeBtn.textContent = "\u2212";
-      removeBtn.addEventListener("click", (e) => applyCount(-1, e));
-      const addBtn = tile.createEl("button", { cls: "col-qty-btn col-qty-add", attr: { title: "Add one copy" } });
-      addBtn.textContent = "+";
-      addBtn.addEventListener("click", (e) => applyCount(1, e));
-    }
-    table.replaceWith(grid);
   }
   async refreshDashboard() {
     for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
