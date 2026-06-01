@@ -284,6 +284,24 @@ export async function setCardCount(
 }
 
 /**
+ * Replace the entire frontmatter block with new lines, preserving the body (card table).
+ */
+export async function replaceFrontmatter(
+  file: TFile,
+  fmLines: string[],
+  vault: Vault
+): Promise<void> {
+  const content = await vault.read(file);
+  const fmEnd = content.indexOf('\n---', 4);
+  if (content.startsWith('---\n') && fmEnd !== -1) {
+    const body = content.slice(fmEnd + 4); // skip '\n---'
+    await vault.modify(file, fmLines.join('\n') + '\n' + body);
+  } else {
+    await vault.modify(file, fmLines.join('\n') + '\n\n' + content);
+  }
+}
+
+/**
  * Update or insert a single key-value pair in the YAML frontmatter of a file.
  * If the key exists, its line is replaced. If not, it is inserted before the closing ---.
  */

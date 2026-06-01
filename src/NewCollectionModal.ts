@@ -1,8 +1,8 @@
 import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
-import { CollectionFormat, CollectionType, type TCGGame } from './types';
+import { CollectionFormat, CollectionType, type TCGGame, type Collection } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
-import { appendCards, patchFrontmatter, yamlStr } from './parser';
+import { appendCards, patchFrontmatter, replaceFrontmatter, yamlStr } from './parser';
 
 interface GameConfig {
   label: string;
@@ -66,6 +66,7 @@ const TABLE_HEADERS: Record<CollectionType, string> = {
 export class NewCollectionModal extends Modal {
   plugin: CollectorsPlugin;
   onCreated: () => void;
+  private editTarget?: { collection: Collection; file: TFile };
 
   private activeGame: TCGGame = 'mtg';
   private gameContentEl!: HTMLElement;
@@ -83,17 +84,36 @@ export class NewCollectionModal extends Modal {
   private autoUpdate = false;
   private format: CollectionFormat = 'paper';
 
-  constructor(app: App, plugin: CollectorsPlugin, onCreated: () => void) {
+  constructor(
+    app: App,
+    plugin: CollectorsPlugin,
+    onCreated: () => void,
+    editTarget?: { collection: Collection; file: TFile }
+  ) {
     super(app);
     this.plugin = plugin;
     this.onCreated = onCreated;
+    if (editTarget) {
+      this.editTarget = editTarget;
+      const c = editTarget.collection;
+      this.name          = c.name;
+      this.type          = c.type;
+      this.format        = c.format ?? 'paper';
+      this.setCode       = c.setCode?.toLowerCase() ?? '';
+      this.finishImport  = c.finishImport ?? 'all';
+      this.allPrints     = c.allPrints ?? true;
+      this.scryfallQuery = c.scryfallQuery ?? '';
+      this.scryfallOrder = c.scryfallOrder ?? 'released';
+      this.autoUpdate    = c.autoUpdate;
+      this.autoFetch     = false;
+    }
   }
 
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass('ncm-modal');
 
-    contentEl.createEl('h2', { cls: 'ncm-title', text: 'New Collection' });
+    contentEl.createEl('h2', { cls: 'ncm-title', text: this.editTarget ? 'Edit Collection' : 'New Collection' });
 
     const enabledGames = this.plugin.settings.enabledGames ?? {};
     const visibleGames = GAME_ORDER.filter(g => enabledGames[g] !== false);
@@ -251,7 +271,11 @@ export class NewCollectionModal extends Modal {
       });
 
     new Setting(el)
-      .addButton(btn => btn.setButtonText('Create').setCta().onClick(() => this.create()))
+      .addButton(btn => btn
+        .setButtonText(this.editTarget ? 'Save' : 'Create')
+        .setCta()
+        .onClick(() => this.editTarget ? this.save() : this.create())
+      )
       .addButton(btn => btn.setButtonText('Cancel').onClick(() => this.close()));
   }
 
@@ -269,6 +293,41 @@ export class NewCollectionModal extends Modal {
     inner.createEl('p', { cls: 'ncm-soon-badge', text: 'Coming soon · Próximamente' });
     if (cfg.tagline) {
       inner.createEl('p', { cls: 'ncm-soon-tagline', text: `"${cfg.tagline}"` });
+    }
+  }
+
+  // ── Save (edit mode) ────────────────────────────────────────────────────────
+
+  private async save() {
+    if (!this.name) { new Notice('Collection name is required.'); return; }
+    const { file } = this.editTarget!;
+    const isSet = this.type === 'mtg-set';
+
+    const fmLines = [
+      '---',
+      `cssclasses: collectors-file`,
+      `plugin-version: ${this.plugin.manifest.version}`,
+      `collection-type: ${this.type}`,
+      `collection-format: ${this.format}`,
+      `collection-name: ${yamlStr(this.name)}`,
+      isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : '',
+      isSet ? `finish-import: ${this.finishImport}` : '',
+      isSet ? `all-prints: ${this.allPrints}` : '',
+      !isSet && this.scryfallQuery ? `scryfall-query: ${this.scryfallQuery}` : '',
+      !isSet && this.scryfallOrder && this.scryfallOrder !== 'released' ? `scryfall-order: ${this.scryfallOrder}` : '',
+      this.autoUpdate ? 'auto-update: true' : '',
+      '---',
+    ].filter(Boolean);
+
+    try {
+      await replaceFrontmatter(file, fmLines, this.app.vault);
+      this.close();
+      if (this.autoFetch && (isSet ? !!this.setCode : !!this.scryfallQuery)) {
+        await this.fetchAndPopulate(file, isSet);
+      }
+      this.onCreated();
+    } catch (e) {
+      new Notice(`Failed to save: ${(e as Error).message}`);
     }
   }
 

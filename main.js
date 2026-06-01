@@ -232,6 +232,16 @@ async function setCardCount(file, cardId, count, vault) {
   }
   await vault.modify(file, lines.join("\n"));
 }
+async function replaceFrontmatter(file, fmLines, vault) {
+  const content = await vault.read(file);
+  const fmEnd = content.indexOf("\n---", 4);
+  if (content.startsWith("---\n") && fmEnd !== -1) {
+    const body = content.slice(fmEnd + 4);
+    await vault.modify(file, fmLines.join("\n") + "\n" + body);
+  } else {
+    await vault.modify(file, fmLines.join("\n") + "\n\n" + content);
+  }
+}
 async function patchFrontmatter(file, key, value, vault) {
   const content = await vault.read(file);
   const fmEnd = content.indexOf("\n---", 4);
@@ -564,7 +574,8 @@ var TABLE_HEADERS = {
   "custom": "| In Collection | Image | Name | Type | Category | Set | Number | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- |"
 };
 var NewCollectionModal = class extends import_obsidian2.Modal {
-  constructor(app, plugin, onCreated) {
+  constructor(app, plugin, onCreated, editTarget) {
+    var _a, _b, _c, _d, _e, _f, _g;
     super(app);
     this.activeGame = "mtg";
     this.tabEls = /* @__PURE__ */ new Map();
@@ -581,12 +592,26 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     this.format = "paper";
     this.plugin = plugin;
     this.onCreated = onCreated;
+    if (editTarget) {
+      this.editTarget = editTarget;
+      const c = editTarget.collection;
+      this.name = c.name;
+      this.type = c.type;
+      this.format = (_a = c.format) != null ? _a : "paper";
+      this.setCode = (_c = (_b = c.setCode) == null ? void 0 : _b.toLowerCase()) != null ? _c : "";
+      this.finishImport = (_d = c.finishImport) != null ? _d : "all";
+      this.allPrints = (_e = c.allPrints) != null ? _e : true;
+      this.scryfallQuery = (_f = c.scryfallQuery) != null ? _f : "";
+      this.scryfallOrder = (_g = c.scryfallOrder) != null ? _g : "released";
+      this.autoUpdate = c.autoUpdate;
+      this.autoFetch = false;
+    }
   }
   onOpen() {
     var _a, _b;
     const { contentEl } = this;
     contentEl.addClass("ncm-modal");
-    contentEl.createEl("h2", { cls: "ncm-title", text: "New Collection" });
+    contentEl.createEl("h2", { cls: "ncm-title", text: this.editTarget ? "Edit Collection" : "New Collection" });
     const enabledGames = (_a = this.plugin.settings.enabledGames) != null ? _a : {};
     const visibleGames = GAME_ORDER.filter((g) => enabledGames[g] !== false);
     if (!visibleGames.includes(this.activeGame)) {
@@ -685,7 +710,9 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
       d.setValue(this.format);
       d.onChange((v) => this.format = v);
     });
-    new import_obsidian2.Setting(el).addButton((btn) => btn.setButtonText("Create").setCta().onClick(() => this.create())).addButton((btn) => btn.setButtonText("Cancel").onClick(() => this.close()));
+    new import_obsidian2.Setting(el).addButton(
+      (btn) => btn.setButtonText(this.editTarget ? "Save" : "Create").setCta().onClick(() => this.editTarget ? this.save() : this.create())
+    ).addButton((btn) => btn.setButtonText("Cancel").onClick(() => this.close()));
   }
   // ── Coming soon ─────────────────────────────────────────────────────────────
   renderComingSoon(el, game) {
@@ -698,6 +725,40 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     inner.createEl("p", { cls: "ncm-soon-badge", text: "Coming soon \xB7 Pr\xF3ximamente" });
     if (cfg.tagline) {
       inner.createEl("p", { cls: "ncm-soon-tagline", text: `"${cfg.tagline}"` });
+    }
+  }
+  // ── Save (edit mode) ────────────────────────────────────────────────────────
+  async save() {
+    if (!this.name) {
+      new import_obsidian2.Notice("Collection name is required.");
+      return;
+    }
+    const { file } = this.editTarget;
+    const isSet = this.type === "mtg-set";
+    const fmLines = [
+      "---",
+      `cssclasses: collectors-file`,
+      `plugin-version: ${this.plugin.manifest.version}`,
+      `collection-type: ${this.type}`,
+      `collection-format: ${this.format}`,
+      `collection-name: ${yamlStr(this.name)}`,
+      isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : "",
+      isSet ? `finish-import: ${this.finishImport}` : "",
+      isSet ? `all-prints: ${this.allPrints}` : "",
+      !isSet && this.scryfallQuery ? `scryfall-query: ${this.scryfallQuery}` : "",
+      !isSet && this.scryfallOrder && this.scryfallOrder !== "released" ? `scryfall-order: ${this.scryfallOrder}` : "",
+      this.autoUpdate ? "auto-update: true" : "",
+      "---"
+    ].filter(Boolean);
+    try {
+      await replaceFrontmatter(file, fmLines, this.app.vault);
+      this.close();
+      if (this.autoFetch && (isSet ? !!this.setCode : !!this.scryfallQuery)) {
+        await this.fetchAndPopulate(file, isSet);
+      }
+      this.onCreated();
+    } catch (e) {
+      new import_obsidian2.Notice(`Failed to save: ${e.message}`);
     }
   }
   // ── Create ──────────────────────────────────────────────────────────────────
@@ -1179,6 +1240,13 @@ var DashboardView = class extends import_obsidian5.ItemView {
         updateBtn.disabled = false;
       });
     }
+    const editBtn = cardActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Edit collection" } });
+    editBtn.innerHTML = "\u270E";
+    editBtn.addEventListener("click", () => {
+      const file = this.app.vault.getAbstractFileByPath(coll.path);
+      if (!(file instanceof import_obsidian5.TFile)) return;
+      new NewCollectionModal(this.app, this.plugin, () => this.refresh(), { collection: coll, file }).open();
+    });
     const openBtn = cardActions.createEl("button", { cls: "col-btn-icon", attr: { title: "Open file" } });
     openBtn.innerHTML = "\u2197";
     openBtn.addEventListener("click", () => this.openFile(coll.path));
