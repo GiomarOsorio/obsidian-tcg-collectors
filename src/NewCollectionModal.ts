@@ -1,10 +1,8 @@
 import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
-import { CollectionFormat, CollectionType } from './types';
+import { CollectionFormat, CollectionType, type TCGGame } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
 import { appendCards, patchFrontmatter, yamlStr } from './parser';
-
-type TCGGame = 'mtg' | 'pokemon' | 'onepiece' | 'yugioh';
 
 interface GameConfig {
   label: string;
@@ -97,26 +95,36 @@ export class NewCollectionModal extends Modal {
 
     contentEl.createEl('h2', { cls: 'ncm-title', text: 'New Collection' });
 
-    // ── Game tab bar ───────────────────────────────────────────────────────────
-    const tabBar = contentEl.createDiv({ cls: 'ncm-tab-bar' });
+    const enabledGames = this.plugin.settings.enabledGames ?? {};
+    const visibleGames = GAME_ORDER.filter(g => enabledGames[g] !== false);
 
-    for (const game of GAME_ORDER) {
-      const cfg = GAMES[game];
-      const tab = tabBar.createEl('button', {
-        cls: `ncm-tab ncm-tab-${game}${game === this.activeGame ? ' ncm-tab-active' : ''}`,
-      });
-      tab.createEl('span', { cls: 'ncm-tab-icon', text: cfg.icon });
-      tab.createEl('span', { cls: 'ncm-tab-label', text: cfg.label });
+    // Default to first enabled game
+    if (!visibleGames.includes(this.activeGame)) {
+      this.activeGame = visibleGames[0] ?? 'mtg';
+    }
 
-      tab.addEventListener('click', () => {
-        if (this.activeGame === game) return;
-        this.tabEls.get(this.activeGame)?.removeClass('ncm-tab-active');
-        this.activeGame = game;
-        tab.addClass('ncm-tab-active');
-        this.renderGameContent();
-      });
+    // ── Game tab bar (hidden when only one game enabled) ───────────────────────
+    if (visibleGames.length > 1) {
+      const tabBar = contentEl.createDiv({ cls: 'ncm-tab-bar' });
 
-      this.tabEls.set(game, tab);
+      for (const game of visibleGames) {
+        const cfg = GAMES[game];
+        const tab = tabBar.createEl('button', {
+          cls: `ncm-tab ncm-tab-${game}${game === this.activeGame ? ' ncm-tab-active' : ''}`,
+        });
+        tab.createEl('span', { cls: 'ncm-tab-icon', text: cfg.icon });
+        tab.createEl('span', { cls: 'ncm-tab-label', text: cfg.label });
+
+        tab.addEventListener('click', () => {
+          if (this.activeGame === game) return;
+          this.tabEls.get(this.activeGame)?.removeClass('ncm-tab-active');
+          this.activeGame = game;
+          tab.addClass('ncm-tab-active');
+          this.renderGameContent();
+        });
+
+        this.tabEls.set(game, tab);
+      }
     }
 
     // ── Content area ───────────────────────────────────────────────────────────

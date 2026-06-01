@@ -36,6 +36,8 @@ export type SortBy = 'name' | 'number' | 'release-asc' | 'release-desc' | 'price
 
 export type PriceSource = 'scryfall-usd' | 'scryfall-eur' | 'tcgplayer' | 'cardmarket';
 
+export type TCGGame = 'mtg' | 'pokemon' | 'onepiece' | 'yugioh';
+
 export interface CollectorsSettings {
   collectionsFolder: string;
   autoDetect: boolean;
@@ -46,6 +48,7 @@ export interface CollectorsSettings {
   cardmarketAppSecret: string;
   cardmarketAccessToken: string;
   cardmarketAccessSecret: string;
+  enabledGames: Record<TCGGame, boolean>;
 }
 
 export const DEFAULT_SETTINGS: CollectorsSettings = {
@@ -58,4 +61,5 @@ export const DEFAULT_SETTINGS: CollectorsSettings = {
   cardmarketAppSecret: '',
   cardmarketAccessToken: '',
   cardmarketAccessSecret: '',
+  enabledGames: { mtg: true, pokemon: true, onepiece: true, yugioh: true },
 };
