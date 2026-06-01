@@ -88,9 +88,9 @@ export class DashboardView extends ItemView {
   }
 
   private async prefetchAllPrices() {
-    const ids = this.collections.flatMap(c =>
-      c.cards.map(card => ({ set: card.set.toLowerCase(), collector_number: card.number }))
-    );
+    const ids = this.collections
+      .filter(c => c.format !== 'arena')
+      .flatMap(c => c.cards.map(card => ({ set: card.set.toLowerCase(), collector_number: card.number })));
     const needed = ids.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
     if (needed.length === 0) return;
     await this.plugin.priceService.fetchPrices(ids);
@@ -114,18 +114,13 @@ export class DashboardView extends ItemView {
     const { vault } = this.app;
     const folder = this.plugin.settings.collectionsFolder;
 
+    const allFiles = vault.getFiles().filter(f => f.extension === 'collection');
+
     let files: TFile[];
     if (folder) {
-      const abs = vault.getAbstractFileByPath(folder);
-      if (abs && 'children' in abs) {
-        files = (abs as any).children.filter(
-          (f: any) => f instanceof TFile && f.extension === 'md'
-        );
-      } else {
-        files = vault.getMarkdownFiles();
-      }
+      files = allFiles.filter(f => f.path.startsWith(folder + '/') || f.parent?.path === folder);
     } else {
-      files = vault.getMarkdownFiles();
+      files = allFiles;
     }
 
     const results = await Promise.all(
@@ -249,6 +244,7 @@ export class DashboardView extends ItemView {
     const nameRow = info.createDiv({ cls: 'col-card-name-row' });
     nameRow.createEl('span', { cls: 'col-card-name', text: coll.name });
     if (coll.setCode) nameRow.createEl('span', { cls: 'col-badge', text: coll.setCode });
+    if (coll.format === 'arena') nameRow.createEl('span', { cls: 'col-badge col-badge-arena', text: 'Arena' });
 
     const progressWrap = info.createDiv({ cls: 'col-progress-wrap' });
     const bar = progressWrap.createDiv({ cls: 'col-progress-bar' });
@@ -430,11 +426,13 @@ export class DashboardView extends ItemView {
 
     this.renderCards(grid, coll);
 
-    // Lazy-load prices for this collection
-    const needsFetch = coll.cards.some(c => !this.plugin.priceService.isCached(c.set.toLowerCase(), c.number));
-    if (needsFetch) {
-      const ids = coll.cards.map(c => ({ set: c.set.toLowerCase(), collector_number: c.number }));
-      this.plugin.priceService.fetchPrices(ids).then(() => this.render());
+    // Lazy-load prices — skip digital collections (no market price)
+    if (coll.format !== 'arena') {
+      const needsFetch = coll.cards.some(c => !this.plugin.priceService.isCached(c.set.toLowerCase(), c.number));
+      if (needsFetch) {
+        const ids = coll.cards.map(c => ({ set: c.set.toLowerCase(), collector_number: c.number }));
+        this.plugin.priceService.fetchPrices(ids).then(() => this.render());
+      }
     }
   }
 
@@ -561,15 +559,21 @@ export class DashboardView extends ItemView {
       text: `×${card.count}`,
     });
 
-    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)
-      ? this.cardPrice(card)
-      : null;
     const priceEl = tileFooter.createEl('span', { cls: 'col-tile-price' });
-    if (typeof p === 'number') {
-      priceEl.textContent = this.fmt(p);
-    } else {
-      priceEl.textContent = '—';
+    if (coll.format === 'arena') {
+      priceEl.textContent = 'Digital';
       priceEl.addClass('col-tile-price-empty');
+    } else {
+      const isCached = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number);
+      const p = isCached ? this.cardPrice(card) : undefined;
+      if (typeof p === 'number') {
+        priceEl.textContent = this.fmt(p);
+      } else if (!isCached) {
+        priceEl.addClass('col-tile-price-loading');
+      } else {
+        priceEl.textContent = '—';
+        priceEl.addClass('col-tile-price-empty');
+      }
     }
 
     const applyCount = (delta: number, e: MouseEvent) => {

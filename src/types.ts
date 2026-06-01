@@ -12,6 +12,7 @@ export interface CollectionCard {
 }
 
 export type CollectionType = 'mtg-set' | 'mtg-theme' | 'custom';
+export type CollectionFormat = 'paper' | 'arena';
 
 export interface Collection {
   name: string;
@@ -23,6 +24,7 @@ export interface Collection {
   autoUpdate: boolean;
   finishImport?: 'all' | 'foil' | 'nonfoil';
   allPrints?: boolean;
+  format: CollectionFormat;
   lastFetched?: string;
   pluginVersion?: string;
   cards: CollectionCard[];
