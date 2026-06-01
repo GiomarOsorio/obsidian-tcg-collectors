@@ -84,14 +84,22 @@ async function delay(ms: number) {
 
 async function fetchAllPages(
   url: string,
-  onPage?: (page: number) => void
+  onPage?: (page: number) => void,
+  onRateLimit?: (waitSeconds: number) => void
 ): Promise<ScryfallCard[]> {
   const cards: ScryfallCard[] = [];
   let nextUrl: string | undefined = url;
   let page = 1;
 
   while (nextUrl) {
-    const res = await requestUrl({ url: nextUrl, headers: { Accept: 'application/json' } });
+    let res = await requestUrl({ url: nextUrl, headers: { Accept: 'application/json' } });
+
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers?.['retry-after'] ?? '30') || 30;
+      onRateLimit?.(retryAfter);
+      await delay(retryAfter * 1000);
+      res = await requestUrl({ url: nextUrl, headers: { Accept: 'application/json' } });
+    }
 
     if (res.status < 200 || res.status >= 300) {
       let details = '';
@@ -107,7 +115,7 @@ async function fetchAllPages(
     if (list.has_more && list.next_page) {
       nextUrl = list.next_page;
       page++;
-      await delay(500); // Scryfall rate limit: 2 req/sec
+      await delay(500);
     } else {
       nextUrl = undefined;
     }
@@ -119,21 +127,24 @@ async function fetchAllPages(
 export async function fetchSetCards(
   setCode: string,
   onPage?: (page: number) => void,
-  unique: 'prints' | 'cards' = 'prints'
+  unique: 'prints' | 'cards' = 'prints',
+  onRateLimit?: (waitSeconds: number) => void
 ): Promise<ScryfallCard[]> {
   const q = encodeURIComponent(`e:${setCode.toLowerCase()} order:set`);
-  return fetchAllPages(`${API}/cards/search?q=${q}&unique=${unique}`, onPage);
+  return fetchAllPages(`${API}/cards/search?q=${q}&unique=${unique}`, onPage, onRateLimit);
 }
 
 export async function fetchSearchCards(
   query: string,
   onPage?: (page: number) => void,
-  order = 'released'
+  order = 'released',
+  onRateLimit?: (waitSeconds: number) => void
 ): Promise<ScryfallCard[]> {
   const q = encodeURIComponent(query);
   return fetchAllPages(
     `${API}/cards/search?q=${q}&unique=prints&order=${order}&dir=asc`,
-    onPage
+    onPage,
+    onRateLimit
   );
 }
 
@@ -159,7 +170,8 @@ export function isScryfallCached(set: string, number: string): boolean {
 }
 
 export async function fetchScryfallData(
-  identifiers: Array<{ set: string; collector_number: string }>
+  identifiers: Array<{ set: string; collector_number: string }>,
+  onRateLimit?: (waitSeconds: number) => void
 ): Promise<void> {
   const seen = new Set<string>();
   const toFetch = identifiers.filter(id => {
@@ -173,48 +185,73 @@ export async function fetchScryfallData(
   const NULL_ENTRY: ScryfallCardData = { usd: null, usd_foil: null, eur: null, eur_foil: null, tcgplayer_id: null, cardmarket_id: null };
 
   for (let i = 0; i < toFetch.length; i += 75) {
+    if (i > 0) await delay(500);
     const batch = toFetch.slice(i, i + 75);
-    // Pre-mark all as fetched with null prices; overwrite below if Scryfall returns data.
-    // This ensures isCached() returns true even for cards not found by Scryfall.
-    for (const id of batch) {
-      scryfallCache.set(`${id.set.toLowerCase()}#${id.collector_number}`, { ...NULL_ENTRY });
-    }
-    try {
-      const res = await requestUrl({
-        url: `${API}/cards/collection`,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ identifiers: batch }),
-      });
-      if (res.status < 200 || res.status >= 300) {
-        console.error(`[Collectors] Scryfall /cards/collection returned ${res.status}`);
-        continue;
-      }
-      const data = res.json as {
-        data: Array<{
-          set: string;
-          collector_number: string;
-          tcgplayer_id?: number;
-          cardmarket_id?: number;
-          prices: {
-            usd: string | null; usd_foil: string | null;
-            eur: string | null; eur_foil: string | null;
-          };
-        }>;
-      };
-      for (const card of data.data) {
-        const p = card.prices;
-        scryfallCache.set(`${card.set.toLowerCase()}#${card.collector_number}`, {
-          usd:           p.usd      != null ? parseFloat(p.usd)      : null,
-          usd_foil:      p.usd_foil != null ? parseFloat(p.usd_foil) : null,
-          eur:           p.eur      != null ? parseFloat(p.eur)      : null,
-          eur_foil:      p.eur_foil != null ? parseFloat(p.eur_foil) : null,
-          tcgplayer_id:  card.tcgplayer_id  ?? null,
-          cardmarket_id: card.cardmarket_id ?? null,
+    let retries = 0;
+    let success = false;
+    while (retries < 3) {
+      try {
+        const res = await requestUrl({
+          url: `${API}/cards/collection`,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ identifiers: batch }),
         });
+        if (res.status === 429) {
+          const retryAfter = parseInt(res.headers?.['retry-after'] ?? '30') || 30;
+          onRateLimit?.(retryAfter);
+          await delay(retryAfter * 1000);
+          retries++;
+          continue;
+        }
+        if (res.status < 200 || res.status >= 300) {
+          console.error(`[Collectors] Scryfall /cards/collection returned ${res.status}`);
+          break;
+        }
+        const data = res.json as {
+          data: Array<{
+            set: string;
+            collector_number: string;
+            tcgplayer_id?: number;
+            cardmarket_id?: number;
+            prices: {
+              usd: string | null; usd_foil: string | null;
+              eur: string | null; eur_foil: string | null;
+            };
+          }>;
+        };
+        const foundKeys = new Set<string>();
+        for (const card of data.data) {
+          const key = `${card.set.toLowerCase()}#${card.collector_number}`;
+          foundKeys.add(key);
+          const p = card.prices;
+          scryfallCache.set(key, {
+            usd:           p.usd      != null ? parseFloat(p.usd)      : null,
+            usd_foil:      p.usd_foil != null ? parseFloat(p.usd_foil) : null,
+            eur:           p.eur      != null ? parseFloat(p.eur)      : null,
+            eur_foil:      p.eur_foil != null ? parseFloat(p.eur_foil) : null,
+            tcgplayer_id:  card.tcgplayer_id  ?? null,
+            cardmarket_id: card.cardmarket_id ?? null,
+          });
+        }
+        // Mark not-found cards so we don't re-fetch them next time
+        for (const id of batch) {
+          const key = `${id.set.toLowerCase()}#${id.collector_number}`;
+          if (!foundKeys.has(key)) scryfallCache.set(key, { ...NULL_ENTRY });
+        }
+        success = true;
+        break;
+      } catch (e) {
+        console.error('[Collectors] Scryfall price fetch failed:', e);
+        break;
       }
-    } catch (e) {
-      console.error('[Collectors] Scryfall price fetch failed:', e);
+    }
+    // Retries exhausted or non-retryable error — mark as NULL so we don't loop forever
+    if (!success) {
+      for (const id of batch) {
+        const key = `${id.set.toLowerCase()}#${id.collector_number}`;
+        if (!scryfallCache.has(key)) scryfallCache.set(key, { ...NULL_ENTRY });
+      }
     }
   }
 }

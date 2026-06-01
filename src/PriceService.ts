@@ -91,8 +91,11 @@ export class PriceService {
    * Fetch prices for a list of cards.
    * Always calls Scryfall first (for fallback + external IDs), then the provider if configured.
    */
-  async fetchPrices(identifiers: Array<{ set: string; collector_number: string }>): Promise<void> {
-    await fetchScryfallData(identifiers);
+  async fetchPrices(
+    identifiers: Array<{ set: string; collector_number: string }>,
+    onRateLimit?: (waitSeconds: number) => void
+  ): Promise<void> {
+    await fetchScryfallData(identifiers, onRateLimit);
 
     const src = this.effectiveSource();
     if (src === 'tcgplayer') {
