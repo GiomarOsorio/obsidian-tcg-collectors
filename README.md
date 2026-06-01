@@ -266,6 +266,43 @@ Output files (copy these three to deploy anywhere):
 - `manifest.json` — plugin metadata
 - `styles.css` — all styles
 
+### Testing on mobile
+
+The easiest way to test on mobile is via [BRAT](https://github.com/TfTHacker/obsidian42-brat) (Beta Reviewers Auto-update Tool).
+
+**One-time setup:**
+
+1. Install BRAT on your mobile Obsidian (Community Plugins → search "BRAT").
+2. In BRAT settings → **Add Beta Plugin** → paste the repo URL:
+   ```
+   https://github.com/GiomarOsorio/obsidian-tcg-collectors
+   ```
+3. BRAT installs the latest release automatically.
+4. Enable **Collectors** in Settings → Community Plugins.
+
+**Iteration workflow:**
+
+```bash
+# 1. Build
+npm run build
+
+# 2. Commit and tag
+git add main.js manifest.json styles.css src/
+git commit -m "fix: your change"
+git tag -a 0.x.y-beta -m "Beta 0.x.y"
+git push origin dev && git push origin 0.x.y-beta
+
+# 3. Create a GitHub release with the three plugin files
+gh release create 0.x.y-beta --prerelease \
+  --title "0.x.y-beta" \
+  --notes "What changed" \
+  main.js manifest.json styles.css
+```
+
+Then on mobile: BRAT → **Check for updates** → Obsidian reloads the plugin automatically.
+
+> **Opening the dashboard on mobile:** Swipe from the left edge to open the sidebar — the Collectors card icon appears at the bottom of the ribbon. Alternatively, use the command palette → **Collectors: Open Dashboard**.
+
 ### Branching
 
 | Branch | Purpose |
@@ -281,17 +318,18 @@ Open PRs against `dev`, not `main`.
 
 ```
 src/
-  main.ts               # Plugin entry, commands, ribbon, MarkdownPostProcessor
+  main.ts               # Plugin entry, commands, ribbon icon, view registration
   types.ts              # TypeScript interfaces and default settings
   parser.ts             # .collection file parser, appendCards, toggleCardOwned
-  ScryfallService.ts    # Scryfall API client, price/set cache, pagination
+  ScryfallService.ts    # Scryfall API client, price/set cache, pagination, rate limit handling
   PriceService.ts       # Multi-provider price layer (Scryfall, TCGPlayer, Cardmarket)
-  DashboardView.ts      # Main view: list + detail screens, hero stats, prices
-  NewCollectionModal.ts # Create collection wizard + Scryfall auto-fetch
+  DashboardView.ts      # Collections list, hero stats, collapsible groups
+  CollectionView.ts     # FileView for .collection files — card grid, filters, sort, prices
+  NewCollectionModal.ts # Create/edit collection wizard + Scryfall auto-fetch
   CardSearchModal.ts    # Search cards by name, browse printings, add to collection
   CardZoomModal.ts      # Full-screen card zoom with holographic foil effect
   migrations.ts         # Schema migration helpers (run on dashboard open)
-  settings.ts           # Settings tab
+  settings.ts           # Settings tab (per-game tabs: General, MTG, Pokémon, One Piece, Yu-Gi-Oh!)
 styles.css              # All CSS (adapts to Obsidian light/dark theme)
 manifest.json           # Plugin manifest (id, version, minAppVersion)
 versions.json           # Version compatibility map
@@ -387,6 +425,43 @@ npm run build   # build de producción
 ```
 
 Después de cada build, recarga el plugin en Obsidian: **Ajustes → Plugins de la comunidad** → apaga y enciende **Collectors**.
+
+### Pruebas en móvil
+
+La forma más sencilla es usar [BRAT](https://github.com/TfTHacker/obsidian42-brat) (Beta Reviewers Auto-update Tool).
+
+**Configuración inicial:**
+
+1. Instala BRAT en Obsidian mobile (Plugins de la comunidad → buscar "BRAT").
+2. En los ajustes de BRAT → **Add Beta Plugin** → pega la URL del repo:
+   ```
+   https://github.com/GiomarOsorio/obsidian-tcg-collectors
+   ```
+3. BRAT instala el último release automáticamente.
+4. Activa **Collectors** en Ajustes → Plugins de la comunidad.
+
+**Flujo de iteración:**
+
+```bash
+# 1. Build
+npm run build
+
+# 2. Commit y tag
+git add main.js manifest.json styles.css src/
+git commit -m "fix: tu cambio"
+git tag -a 0.x.y-beta -m "Beta 0.x.y"
+git push origin dev && git push origin 0.x.y-beta
+
+# 3. Crear GitHub release con los tres archivos del plugin
+gh release create 0.x.y-beta --prerelease \
+  --title "0.x.y-beta" \
+  --notes "Qué cambió" \
+  main.js manifest.json styles.css
+```
+
+Luego en móvil: BRAT → **Check for updates** → Obsidian recarga el plugin automáticamente.
+
+> **Abrir el dashboard en móvil:** Desliza desde el borde izquierdo para abrir la barra lateral — el ícono de carta de Collectors aparece al fondo del ribbon. También puedes usar el Command Palette → **Collectors: Open Dashboard**.
 
 ---
 
