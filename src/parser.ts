@@ -1,5 +1,5 @@
 import { TFile, Vault } from 'obsidian';
-import { Collection, CollectionCard, CollectionType } from './types';
+import { Collection, CollectionCard, CollectionFormat, CollectionType } from './types';
 
 const CHECKBOX_PATTERN = /<input type="checkbox"/;
 
@@ -16,6 +16,7 @@ export async function parseCollectionFile(
   let autoUpdate = false;
   let finishImport: 'all' | 'foil' | 'nonfoil' | undefined;
   let allPrints: boolean | undefined;
+  let collectionFormat: CollectionFormat = 'paper';
   let lastFetched: string | undefined;
   let pluginVersion: string | undefined;
   let collectionName = file.basename;
@@ -57,6 +58,9 @@ export async function parseCollectionFile(
         case 'plugin-version':
           pluginVersion = val;
           break;
+        case 'collection-format':
+          collectionFormat = val as CollectionFormat;
+          break;
       }
     }
   }
@@ -70,6 +74,7 @@ export async function parseCollectionFile(
     name: collectionName,
     path: file.path,
     type: collectionType,
+    format: collectionFormat,
     setCode,
     scryfallQuery,
     scryfallOrder,

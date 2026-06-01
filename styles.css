@@ -221,6 +221,11 @@
   letter-spacing: 0.04em;
 }
 
+.col-badge-arena {
+  background: #1565C0;
+  color: #fff;
+}
+
 /* ── Progress bar ─────────────────────────────────────────────────────────────── */
 .col-progress-wrap {
   display: flex;
@@ -543,6 +548,26 @@
 .col-tile-price-empty {
   color: var(--text-faint);
   font-weight: 400;
+}
+
+@keyframes col-price-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+.col-tile-price-loading {
+  display: inline-block;
+  width: 38px;
+  height: 9px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--background-modifier-border) 25%,
+    var(--background-modifier-hover) 50%,
+    var(--background-modifier-border) 75%
+  );
+  background-size: 200% 100%;
+  animation: col-price-shimmer 1.4s ease-in-out infinite;
+  vertical-align: middle;
 }
 
 .col-tile-count {
