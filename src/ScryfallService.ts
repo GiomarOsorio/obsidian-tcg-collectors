@@ -170,8 +170,15 @@ export async function fetchScryfallData(
   });
   if (toFetch.length === 0) return;
 
+  const NULL_ENTRY: ScryfallCardData = { usd: null, usd_foil: null, eur: null, eur_foil: null, tcgplayer_id: null, cardmarket_id: null };
+
   for (let i = 0; i < toFetch.length; i += 75) {
     const batch = toFetch.slice(i, i + 75);
+    // Pre-mark all as fetched with null prices; overwrite below if Scryfall returns data.
+    // This ensures isCached() returns true even for cards not found by Scryfall.
+    for (const id of batch) {
+      scryfallCache.set(`${id.set.toLowerCase()}#${id.collector_number}`, { ...NULL_ENTRY });
+    }
     try {
       const res = await requestUrl({
         url: `${API}/cards/collection`,
@@ -179,7 +186,10 @@ export async function fetchScryfallData(
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ identifiers: batch }),
       });
-      if (res.status < 200 || res.status >= 300) continue;
+      if (res.status < 200 || res.status >= 300) {
+        console.error(`[Collectors] Scryfall /cards/collection returned ${res.status}`);
+        continue;
+      }
       const data = res.json as {
         data: Array<{
           set: string;
@@ -203,8 +213,8 @@ export async function fetchScryfallData(
           cardmarket_id: card.cardmarket_id ?? null,
         });
       }
-    } catch {
-      // non-critical
+    } catch (e) {
+      console.error('[Collectors] Scryfall price fetch failed:', e);
     }
   }
 }
