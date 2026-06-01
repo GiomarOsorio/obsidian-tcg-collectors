@@ -2232,18 +2232,26 @@ async function buildOAuth1Header(method, url, appToken, appSecret, accessToken, 
 }
 
 // src/main.ts
+var COLLECTORS_ICON = "collectors-card";
 var CollectorsPlugin = class extends import_obsidian9.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
   }
   async onload() {
+    (0, import_obsidian9.addIcon)(COLLECTORS_ICON, `
+      <rect x="14" y="4" width="72" height="92" rx="7" ry="7" fill="none" stroke="currentColor" stroke-width="6"/>
+      <rect x="22" y="12" width="56" height="40" rx="3" fill="currentColor" opacity="0.25"/>
+      <line x1="22" y1="62" x2="78" y2="62" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+      <line x1="22" y1="75" x2="78" y2="75" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+      <line x1="22" y1="88" x2="58" y2="88" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+    `);
     await this.loadSettings();
     this.priceService = new PriceService(this.settings);
     this.registerView(DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this));
     this.registerView(COLLECTION_VIEW_TYPE, (leaf) => new CollectionView(leaf, this));
     this.registerExtensions(["collection"], COLLECTION_VIEW_TYPE);
-    this.addRibbonIcon("layout-grid", "Collectors Dashboard", () => this.activateDashboard());
+    this.addRibbonIcon(COLLECTORS_ICON, "Collectors Dashboard", () => this.activateDashboard());
     this.addCommand({
       id: "open-dashboard",
       name: "Open Dashboard",
