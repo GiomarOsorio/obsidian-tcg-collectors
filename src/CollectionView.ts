@@ -9,6 +9,7 @@ import {
   fetchSetCards, fetchSearchCards, cardToMarkdownRows,
   getSetDate, fetchSetReleasedAt,
 } from './ScryfallService';
+import { t } from './i18n';
 
 export const COLLECTION_VIEW_TYPE = 'collection-detail';
 
@@ -30,8 +31,8 @@ export class CollectionView extends FileView {
   }
 
   getViewType() { return COLLECTION_VIEW_TYPE; }
-  getDisplayText() { return this.collection?.name ?? 'Collection'; }
-  getIcon() { return 'layout-grid'; }
+  getDisplayText() { return this.collection?.name ?? t('collection_display_text'); }
+  getIcon() { return 'collectors-card'; }
   canAcceptExtension(ext: string) { return ext === 'collection'; }
 
   async onLoadFile(file: TFile) {
@@ -45,8 +46,8 @@ export class CollectionView extends FileView {
       }));
       const needed = ids.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
       if (needed.length > 0) {
-        this.showLoading('Loading prices…');
-        await this.plugin.priceService.fetchPrices(ids, s => this.showLoading(`Rate limited — retrying in ${s}s…`));
+        this.showLoading(t('loading_prices'));
+        await this.plugin.priceService.fetchPrices(ids, s => this.showLoading(t('loading_rate_limited', { seconds: s })));
         this.hideLoading();
         this.render();
       }
@@ -66,8 +67,8 @@ export class CollectionView extends FileView {
       const ids = this.collection.cards.map(c => ({ set: c.set.toLowerCase(), collector_number: c.number }));
       const needed = ids.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
       if (needed.length > 0) {
-        this.showLoading('Loading prices…');
-        await this.plugin.priceService.fetchPrices(ids, s => this.showLoading(`Rate limited — retrying in ${s}s…`));
+        this.showLoading(t('loading_prices'));
+        await this.plugin.priceService.fetchPrices(ids, s => this.showLoading(t('loading_rate_limited', { seconds: s })));
         this.hideLoading();
         this.render();
       }
@@ -79,7 +80,7 @@ export class CollectionView extends FileView {
     contentEl.empty();
     contentEl.addClass('collectors-root');
     if (!this.collection) {
-      contentEl.createDiv({ cls: 'col-empty', text: 'Loading…' });
+      contentEl.createDiv({ cls: 'col-empty', text: t('loading') });
       return;
     }
     this.renderDetail(contentEl, this.collection);
@@ -121,30 +122,29 @@ export class CollectionView extends FileView {
     const titleWrap = header.createDiv({ cls: 'col-header-title' });
     titleWrap.createEl('h2', { cls: 'col-title', text: coll.name });
     if (coll.setCode) titleWrap.createEl('span', { cls: 'col-badge', text: coll.setCode });
-    if (coll.format === 'arena') titleWrap.createEl('span', { cls: 'col-badge col-badge-arena', text: 'Arena' });
+    if (coll.format === 'arena') titleWrap.createEl('span', { cls: 'col-badge col-badge-arena', text: t('badge_arena') });
 
     const headerActions = header.createDiv({ cls: 'col-actions' });
 
     if (coll.setCode || coll.scryfallQuery) {
-      const updateBtn = headerActions.createEl('button', { cls: 'col-btn-icon', attr: { title: 'Update from Scryfall' } });
+      const updateBtn = headerActions.createEl('button', { cls: 'col-btn-icon', attr: { title: t('btn_update_scryfall') } });
       updateBtn.innerHTML = '⟳';
       updateBtn.addEventListener('click', async () => {
         updateBtn.disabled = true;
-        this.showLoading('Fetching cards from Scryfall…');
+        this.showLoading(t('loading_fetching'));
         await this.updateFromScryfall(coll);
         this.hideLoading();
-
         updateBtn.disabled = false;
         await this.reload();
       });
     }
 
-    const addCardBtn = headerActions.createEl('button', { cls: 'col-btn', text: '+ Card' });
+    const addCardBtn = headerActions.createEl('button', { cls: 'col-btn', text: t('btn_add_card') });
     addCardBtn.addEventListener('click', () => {
       new CardSearchModal(this.app, coll, () => this.reload()).open();
     });
 
-    const editBtn = headerActions.createEl('button', { cls: 'col-btn-icon', attr: { title: 'Edit collection' } });
+    const editBtn = headerActions.createEl('button', { cls: 'col-btn-icon', attr: { title: t('btn_edit_collection') } });
     editBtn.innerHTML = '✎';
     editBtn.addEventListener('click', () => {
       const file = this.app.vault.getAbstractFileByPath(coll.path);
@@ -154,26 +154,29 @@ export class CollectionView extends FileView {
 
     this.renderDetailHero(root, coll);
 
-    // ── Controls ──────────────────────────────────────────────────────────────
     const controls = root.createDiv({ cls: 'col-controls' });
     const searchInput = controls.createEl('input', {
       cls: 'col-search',
-      attr: { type: 'text', placeholder: 'Search cards...', value: this.searchQuery },
+      attr: { type: 'text', placeholder: t('search_placeholder'), value: this.searchQuery },
     });
 
     const row2 = controls.createDiv({ cls: 'col-controls-row' });
     const tabs = row2.createDiv({ cls: 'col-tabs' });
 
     const filterValues: Filter[] = ['all', 'owned', 'missing'];
-    const tabLabels: Record<Filter, string> = { all: 'All', owned: 'Owned', missing: 'Missing' };
+    const tabLabels: Record<Filter, string> = {
+      all:     t('filter_all'),
+      owned:   t('filter_owned'),
+      missing: t('filter_missing'),
+    };
 
     const hasFoil    = coll.cards.some(c => c.id.endsWith('_f'));
     const hasNonFoil = coll.cards.some(c => c.id.endsWith('_n'));
     if (hasFoil && hasNonFoil) {
       const finishWrap = row2.createDiv({ cls: 'col-finish-wrap' });
       for (const fo of [
-        { value: 'foil'    as FinishFilter, label: '✦ Foil' },
-        { value: 'nonfoil' as FinishFilter, label: '◇ Normal' },
+        { value: 'foil'    as FinishFilter, label: t('finish_foil') },
+        { value: 'nonfoil' as FinishFilter, label: t('finish_normal') },
       ]) {
         const lbl = finishWrap.createEl('label', { cls: 'col-finish-label' });
         const cb = lbl.createEl('input', { attr: { type: 'checkbox' } }) as HTMLInputElement;
@@ -189,15 +192,15 @@ export class CollectionView extends FileView {
     }
 
     const sortWrap = row2.createDiv({ cls: 'col-sort-wrap' });
-    sortWrap.createEl('span', { cls: 'col-sort-label', text: 'Sort:' });
+    sortWrap.createEl('span', { cls: 'col-sort-label', text: t('sort_label') });
     const sortSelect = sortWrap.createEl('select', { cls: 'col-sort-select' });
     const sortOptions: Array<{ value: SortBy; label: string }> = [
-      { value: 'number',       label: 'Number' },
-      { value: 'name',         label: 'Name' },
-      { value: 'price-desc',   label: 'Price ↓' },
-      { value: 'price-asc',    label: 'Price ↑' },
-      { value: 'release-desc', label: 'Newest first' },
-      { value: 'release-asc',  label: 'Oldest first' },
+      { value: 'number',       label: t('sort_number') },
+      { value: 'name',         label: t('sort_name') },
+      { value: 'price-desc',   label: t('sort_price_desc') },
+      { value: 'price-asc',    label: t('sort_price_asc') },
+      { value: 'release-desc', label: t('sort_newest') },
+      { value: 'release-asc',  label: t('sort_oldest') },
     ];
     for (const opt of sortOptions) {
       const o = sortSelect.createEl('option', { attr: { value: opt.value }, text: opt.label });
@@ -237,7 +240,7 @@ export class CollectionView extends FileView {
     const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll.cards);
 
     const hero = root.createDiv({ cls: 'col-detail-hero' });
-    this.statBox(hero, `${coll.owned} / ${coll.total}`, 'Cards owned', 'col-hero-owned');
+    this.statBox(hero, `${coll.owned} / ${coll.total}`, t('stat_cards_owned'), 'col-hero-owned');
 
     const progBox = hero.createDiv({ cls: 'col-hero-box col-hero-progress' });
     const progWrap = progBox.createDiv({ cls: 'col-progress-wrap' });
@@ -246,8 +249,8 @@ export class CollectionView extends FileView {
     progBox.createEl('span', { cls: 'col-hero-value col-hero-pct', text: `${pct}%` });
 
     if (pricesLoaded) {
-      this.statBox(hero, this.fmt(ownedVal), `Invested · ${this.plugin.priceService.sourceLabel()}`, 'col-hero-money');
-      this.statBox(hero, this.fmt(missingVal), 'To complete', 'col-hero-missing');
+      this.statBox(hero, this.fmt(ownedVal), t('stat_invested', { source: this.plugin.priceService.sourceLabel() }), 'col-hero-money');
+      this.statBox(hero, this.fmt(missingVal), t('stat_to_complete'), 'col-hero-missing');
     }
   }
 
@@ -267,7 +270,7 @@ export class CollectionView extends FileView {
     const paint = (sorted: CollectionCard[]) => {
       grid.empty();
       if (sorted.length === 0) {
-        grid.createDiv({ cls: 'col-empty', text: 'No cards match this filter.' });
+        grid.createDiv({ cls: 'col-empty', text: t('no_cards_match') });
         return;
       }
       for (const card of sorted) this.renderCardTile(grid, card, coll);
@@ -342,7 +345,7 @@ export class CollectionView extends FileView {
 
     const priceEl = tileFooter.createEl('span', { cls: 'col-tile-price' });
     if (coll.format === 'arena') {
-      priceEl.textContent = 'Digital';
+      priceEl.textContent = t('price_digital');
       priceEl.addClass('col-tile-price-empty');
     } else {
       const isCached = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number);
@@ -378,11 +381,11 @@ export class CollectionView extends FileView {
       }, 400));
     };
 
-    const removeBtn = tile.createEl('button', { cls: 'col-qty-btn col-qty-remove', attr: { title: 'Remove one copy' } });
+    const removeBtn = tile.createEl('button', { cls: 'col-qty-btn col-qty-remove', attr: { title: t('btn_remove_copy') } });
     removeBtn.textContent = '−';
     removeBtn.addEventListener('click', e => applyCount(-1, e));
 
-    const addBtn = tile.createEl('button', { cls: 'col-qty-btn col-qty-add', attr: { title: 'Add one copy' } });
+    const addBtn = tile.createEl('button', { cls: 'col-qty-btn col-qty-add', attr: { title: t('btn_add_copy') } });
     addBtn.textContent = '+';
     addBtn.addEventListener('click', e => applyCount(+1, e));
   }
@@ -406,7 +409,7 @@ export class CollectionView extends FileView {
 
   // ── Loading overlay ──────────────────────────────────────────────────────────
 
-  private showLoading(label = 'Updating…') {
+  private showLoading(label = t('loading_updating')) {
     let overlay = this.contentEl.querySelector<HTMLElement>('.col-loading-overlay');
     if (!overlay) {
       overlay = this.contentEl.createDiv({ cls: 'col-loading-overlay' });
@@ -429,13 +432,13 @@ export class CollectionView extends FileView {
   // ── Scryfall update ──────────────────────────────────────────────────────────
 
   private async updateFromScryfall(coll: Collection): Promise<void> {
-    new Notice(`Fetching cards for "${coll.name}"...`);
+    new Notice(t('notice_fetching_for', { name: coll.name }));
     try {
       const finish = coll.finishImport ?? 'all';
       const unique  = coll.allPrints === false ? 'cards' : 'prints';
 
-      const onPage = (p: number) => this.showLoading(`Fetching page ${p}…`);
-      const onRateLimit = (s: number) => this.showLoading(`Rate limited — retrying in ${s}s…`);
+      const onPage = (p: number) => this.showLoading(t('loading_page', { page: p }));
+      const onRateLimit = (s: number) => this.showLoading(t('loading_rate_limited', { seconds: s }));
 
       const rawCards = coll.setCode
         ? await fetchSetCards(coll.setCode, onPage, unique, onRateLimit)
@@ -461,11 +464,11 @@ export class CollectionView extends FileView {
       await patchFrontmatter(file, 'last-fetched', today, this.app.vault);
 
       new Notice(added > 0
-        ? `Added ${added} new cards to "${coll.name}".`
-        : `"${coll.name}" is already up to date.`
+        ? t('notice_cards_added', { count: added, name: coll.name })
+        : t('notice_up_to_date', { name: coll.name })
       );
     } catch (e) {
-      new Notice(`Scryfall update failed: ${(e as Error).message}`);
+      new Notice(t('notice_scryfall_failed', { error: (e as Error).message }));
     }
   }
 }

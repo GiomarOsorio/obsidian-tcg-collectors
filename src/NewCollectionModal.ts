@@ -3,6 +3,7 @@ import type CollectorsPlugin from './main';
 import { CollectionFormat, CollectionType, type TCGGame, type Collection } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
 import { appendCards, patchFrontmatter, replaceFrontmatter, yamlStr, extractOwnedMap, clearCardRows, applyOwnedStates } from './parser';
+import { t } from './i18n';
 
 interface GameConfig {
   label: string;
@@ -45,19 +46,14 @@ const GAMES: Record<TCGGame, GameConfig> = {
 
 const GAME_ORDER: TCGGame[] = ['mtg', 'pokemon', 'onepiece', 'yugioh'];
 
-const TYPE_LABELS: Record<CollectionType, string> = {
-  'mtg-set':   'MTG Set / Product',
-  'mtg-theme': 'MTG Theme Collection',
-};
+const TYPE_LABELS = (): Record<CollectionType, string> => ({
+  'mtg-set':   t('type_mtg_set'),
+  'mtg-theme': t('type_mtg_theme'),
+});
 
-const TABLE_HEADERS: Record<CollectionType, string> = {
-  'mtg-set':
-    '| ¿La tengo? | Imagen | Nombre | Tipo | Rareza | Set | Número | Notas |\n' +
-    '| --- | --- | --- | --- | --- | --- | --- | --- |',
-  'mtg-theme':
-    '| In Collection | Image | Name | Type | Rarity | Set | Number | Notes |\n' +
-    '| --- | --- | --- | --- | --- | --- | --- | --- |',
-};
+const TABLE_HEADER =
+  '| Owned | Image | Name | Type | Rarity | Set | Number | Notes |\n' +
+  '| --- | --- | --- | --- | --- | --- | --- | --- |';
 
 export class NewCollectionModal extends Modal {
   plugin: CollectorsPlugin;
@@ -109,7 +105,7 @@ export class NewCollectionModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass('ncm-modal');
 
-    contentEl.createEl('h2', { cls: 'ncm-title', text: this.editTarget ? 'Edit Collection' : 'New Collection' });
+    contentEl.createEl('h2', { cls: 'ncm-title', text: this.editTarget ? t('modal_edit_title') : t('modal_new_title') });
 
     const enabledGames = this.plugin.settings.enabledGames ?? {};
     const visibleGames = GAME_ORDER.filter(g => enabledGames[g] !== false);
@@ -167,38 +163,38 @@ export class NewCollectionModal extends Modal {
 
   private renderMTGForm(el: HTMLElement) {
     new Setting(el)
-      .setName('Collection name')
-      .setDesc('Display name for this collection')
-      .addText(t =>
-        t.setPlaceholder('e.g. Bloomburrow Token Boosters')
+      .setName(t('field_name'))
+      .setDesc(t('field_name_desc'))
+      .addText(tx =>
+        tx.setPlaceholder(t('field_name_placeholder'))
           .setValue(this.name)
           .onChange(v => (this.name = v.trim()))
       );
 
     const setCodeSetting = new Setting(el)
-      .setName('Set code')
-      .setDesc('Scryfall set code (e.g. blb, tblb). Used to auto-fetch cards.')
-      .addText(t =>
-        t.setPlaceholder('e.g. tblb')
+      .setName(t('field_set_code'))
+      .setDesc(t('field_set_code_desc'))
+      .addText(tx =>
+        tx.setPlaceholder(t('field_set_code_ph'))
           .setValue(this.setCode)
           .onChange(v => (this.setCode = v.trim().toLowerCase()))
       );
 
     const finishSetting = new Setting(el)
-      .setName('Print finish')
-      .setDesc('Which finish to import from this set.')
+      .setName(t('field_finish'))
+      .setDesc(t('field_finish_desc'))
       .addDropdown(d => {
-        d.addOption('all',     'All');
-        d.addOption('nonfoil', 'Non-foil only');
-        d.addOption('foil',    'Foil only');
+        d.addOption('all',     t('finish_all'));
+        d.addOption('nonfoil', t('finish_nonfoil'));
+        d.addOption('foil',    t('finish_foil_only'));
         d.setValue(this.finishImport);
         d.onChange(v => (this.finishImport = v as 'all' | 'foil' | 'nonfoil'));
       });
 
     const allPrintsSetting = new Setting(el)
-      .setName('All printed cards')
-      .setDesc('Include all variants: showcase, borderless, extended art, etc. Turn off to import only the main set list.')
-      .addToggle(t => t.setValue(this.allPrints).onChange(v => (this.allPrints = v)));
+      .setName(t('field_all_prints'))
+      .setDesc(t('field_all_prints_desc'))
+      .addToggle(tx => tx.setValue(this.allPrints).onChange(v => (this.allPrints = v)));
 
     const queryWrap = el.createDiv({ cls: 'nm-query-wrap' });
     queryWrap.style.display = 'none';
@@ -207,18 +203,18 @@ export class NewCollectionModal extends Modal {
     previewEl.style.display = 'none';
 
     new Setting(queryWrap)
-      .setName('Scryfall query or URL')
-      .setDesc('Paste a Scryfall search URL or type a query directly. Add game:paper to exclude digital-only cards.')
-      .addTextArea(t => {
-        t.setPlaceholder('Query: type:turtle game:paper\n\nURL: https://scryfall.com/search?q=...');
-        t.inputEl.rows = 3;
-        t.inputEl.addClass('nm-query-input');
+      .setName(t('field_query'))
+      .setDesc(t('field_query_desc'))
+      .addTextArea(tx => {
+        tx.setPlaceholder(t('field_query_ph'));
+        tx.inputEl.rows = 3;
+        tx.inputEl.addClass('nm-query-input');
         if (this.scryfallQuery) {
-          t.setValue(this.scryfallQuery);
+          tx.setValue(this.scryfallQuery);
           previewEl.textContent = `Query: ${this.scryfallQuery}`;
           previewEl.style.display = '';
         }
-        t.onChange(raw => {
+        tx.onChange(raw => {
           const parsed = parseScryfallInput(raw);
           this.scryfallQuery = parsed.query;
           this.scryfallOrder = parsed.order ?? 'released';
@@ -235,12 +231,9 @@ export class NewCollectionModal extends Modal {
     let refetchWarning: HTMLElement | null = null;
 
     const autoFetchSetting = new Setting(el)
-      .setName(this.editTarget ? 'Re-fetch cards from Scryfall' : 'Auto-fetch cards from Scryfall')
-      .setDesc(this.editTarget
-        ? 'Replace all cards with a fresh import. Use when the query or set code changed.'
-        : 'Populate collection with cards from Scryfall after creation.'
-      )
-      .addToggle(t => t.setValue(this.autoFetch).onChange(v => {
+      .setName(this.editTarget ? t('field_refetch') : t('field_autofetch'))
+      .setDesc(this.editTarget ? t('field_refetch_desc') : t('field_autofetch_desc'))
+      .addToggle(tx => tx.setValue(this.autoFetch).onChange(v => {
         this.autoFetch = v;
         if (refetchWarning) refetchWarning.style.display = v ? '' : 'none';
       }));
@@ -248,19 +241,19 @@ export class NewCollectionModal extends Modal {
     if (this.editTarget) {
       refetchWarning = el.createDiv({ cls: 'ncm-refetch-warning' });
       refetchWarning.style.display = this.autoFetch ? '' : 'none';
-      refetchWarning.setText('⚠ All cards will be replaced by the new Scryfall results. Previously owned cards matching the new query will have their status preserved.');
+      refetchWarning.setText(t('refetch_warning'));
     }
 
     const autoUpdateSetting = new Setting(el)
-      .setName('Auto-update')
-      .setDesc('Check for new cards on Scryfall every time the dashboard opens. Ideal for theme collections.')
-      .addToggle(t => t.setValue(this.autoUpdate).onChange(v => (this.autoUpdate = v)));
+      .setName(t('field_auto_update'))
+      .setDesc(t('field_auto_update_desc'))
+      .addToggle(tx => tx.setValue(this.autoUpdate).onChange(v => (this.autoUpdate = v)));
     autoUpdateSetting.settingEl.style.display = 'none';
 
     new Setting(el)
-      .setName('Type')
+      .setName(t('field_type'))
       .addDropdown(d => {
-        for (const [val, label] of Object.entries(TYPE_LABELS)) {
+        for (const [val, label] of Object.entries(TYPE_LABELS())) {
           d.addOption(val, label);
         }
         d.setValue(this.type);
@@ -279,22 +272,22 @@ export class NewCollectionModal extends Modal {
       });
 
     new Setting(el)
-      .setName('Format')
-      .setDesc('Physical cards or MTG Arena digital.')
+      .setName(t('field_format'))
+      .setDesc(t('field_format_desc'))
       .addDropdown(d => {
-        d.addOption('paper', '🃏 Paper');
-        d.addOption('arena', '🖥 MTG Arena');
+        d.addOption('paper', t('format_paper'));
+        d.addOption('arena', t('format_arena'));
         d.setValue(this.format);
         d.onChange(v => (this.format = v as CollectionFormat));
       });
 
     new Setting(el)
       .addButton(btn => btn
-        .setButtonText(this.editTarget ? 'Save' : 'Create')
+        .setButtonText(this.editTarget ? t('btn_save') : t('btn_create'))
         .setCta()
         .onClick(() => this.editTarget ? this.save() : this.create())
       )
-      .addButton(btn => btn.setButtonText('Cancel').onClick(() => this.close()));
+      .addButton(btn => btn.setButtonText(t('btn_cancel')).onClick(() => this.close()));
   }
 
   // ── Coming soon ─────────────────────────────────────────────────────────────
@@ -308,7 +301,7 @@ export class NewCollectionModal extends Modal {
     const inner = screen.createDiv({ cls: 'ncm-soon-inner' });
     inner.createEl('div', { cls: 'ncm-soon-icon', text: cfg.icon });
     inner.createEl('h3', { cls: 'ncm-soon-name', text: cfg.label }).style.color = cfg.accent;
-    inner.createEl('p', { cls: 'ncm-soon-badge', text: 'Coming soon · Próximamente' });
+    inner.createEl('p', { cls: 'ncm-soon-badge', text: t('coming_soon') });
     if (cfg.tagline) {
       inner.createEl('p', { cls: 'ncm-soon-tagline', text: `"${cfg.tagline}"` });
     }
@@ -317,7 +310,7 @@ export class NewCollectionModal extends Modal {
   // ── Save (edit mode) ────────────────────────────────────────────────────────
 
   private async save() {
-    if (!this.name) { new Notice('Collection name is required.'); return; }
+    if (!this.name) { new Notice(t('notice_name_required')); return; }
     const { file } = this.editTarget!;
     const isSet = this.type === 'mtg-set';
 
@@ -339,14 +332,14 @@ export class NewCollectionModal extends Modal {
 
     try {
       await replaceFrontmatter(file, fmLines, this.app.vault);
-      new Notice('Collection saved.');
+      new Notice(t('notice_saved'));
       this.close();
       if (this.autoFetch && (isSet ? !!this.setCode : !!this.scryfallQuery)) {
         await this.refetchWithPreservation(file, isSet);
       }
       this.onCreated();
     } catch (e) {
-      new Notice(`Failed to save: ${(e as Error).message}`);
+      new Notice(t('notice_save_failed', { error: (e as Error).message }));
     }
   }
 
@@ -356,17 +349,17 @@ export class NewCollectionModal extends Modal {
     const content = await this.app.vault.read(file);
     const previousOwned = extractOwnedMap(content);
 
-    new Notice('Fetching cards from Scryfall...');
+    new Notice(t('notice_fetching_for', { name: this.name }));
     try {
       const cards = isSet
         ? await fetchSetCards(
             this.setCode,
-            p => new Notice(`Fetching page ${p}...`),
+            p => new Notice(t('notice_fetching_page', { page: p })),
             this.allPrints ? 'prints' : 'cards'
           )
         : await fetchSearchCards(
             this.scryfallQuery,
-            p => new Notice(`Fetching page ${p}...`),
+            p => new Notice(t('notice_fetching_page', { page: p })),
             this.scryfallOrder
           );
 
@@ -387,11 +380,11 @@ export class NewCollectionModal extends Modal {
       await patchFrontmatter(file, 'last-fetched', today, this.app.vault);
 
       const msg = previousOwned.size > 0
-        ? `Re-imported ${restoredRows.length} cards. ${preservedCount}/${previousOwned.size} owned entries preserved.`
-        : `Re-imported ${restoredRows.length} cards.`;
+        ? t('notice_reimported', { count: restoredRows.length, preserved: preservedCount, total: previousOwned.size })
+        : t('notice_reimported_simple', { count: restoredRows.length });
       new Notice(msg);
     } catch (e) {
-      new Notice(`Scryfall fetch failed: ${(e as Error).message}`);
+      new Notice(t('notice_fetch_failed', { error: (e as Error).message }));
     }
   }
 
@@ -399,7 +392,7 @@ export class NewCollectionModal extends Modal {
 
   private async create() {
     if (!this.name) {
-      new Notice('Collection name is required.');
+      new Notice(t('notice_name_required'));
       return;
     }
 
@@ -408,7 +401,7 @@ export class NewCollectionModal extends Modal {
     const path = normalizePath(folder ? `${folder}/${filename}` : filename);
 
     if (this.app.vault.getAbstractFileByPath(path) instanceof TFile) {
-      new Notice(`File already exists: ${path}`);
+      new Notice(t('notice_file_exists', { path }));
       return;
     }
 
@@ -431,7 +424,7 @@ export class NewCollectionModal extends Modal {
       '---',
     ].filter(Boolean);
 
-    const content = `${fmLines.join('\n')}\n\n${TABLE_HEADERS[this.type]}\n`;
+    const content = `${fmLines.join('\n')}\n\n${TABLE_HEADER}\n`;
 
     try {
       if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
@@ -447,22 +440,22 @@ export class NewCollectionModal extends Modal {
       this.onCreated();
       await this.app.workspace.getLeaf(false).openFile(file);
     } catch (e) {
-      new Notice(`Failed to create collection: ${(e as Error).message}`);
+      new Notice(t('notice_create_failed', { error: (e as Error).message }));
     }
   }
 
   private async fetchAndPopulate(file: TFile, isSet: boolean) {
-    new Notice('Fetching cards from Scryfall...');
+    new Notice(t('notice_fetching_for', { name: this.name }));
     try {
       const cards = isSet
         ? await fetchSetCards(
             this.setCode,
-            p => new Notice(`Fetching page ${p}...`),
+            p => new Notice(t('notice_fetching_page', { page: p })),
             this.allPrints ? 'prints' : 'cards'
           )
         : await fetchSearchCards(
             this.scryfallQuery,
-            p => new Notice(`Fetching page ${p}...`),
+            p => new Notice(t('notice_fetching_page', { page: p })),
             this.scryfallOrder
           );
 
@@ -476,9 +469,9 @@ export class NewCollectionModal extends Modal {
       const added = await appendCards(file, rows, this.app.vault);
       const today = new Date().toISOString().slice(0, 10);
       await patchFrontmatter(file, 'last-fetched', today, this.app.vault);
-      new Notice(`Added ${added} cards to "${this.name}".`);
+      new Notice(t('notice_added_to', { count: added, name: this.name }));
     } catch (e) {
-      new Notice(`Scryfall fetch failed: ${(e as Error).message}`);
+      new Notice(t('notice_fetch_failed', { error: (e as Error).message }));
     }
   }
 }
