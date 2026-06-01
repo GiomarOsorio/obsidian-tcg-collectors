@@ -1,8 +1,8 @@
 import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
-import { CollectionType } from './types';
+import { CollectionFormat, CollectionType } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
-import { appendCards, patchFrontmatter } from './parser';
+import { appendCards, patchFrontmatter, yamlStr } from './parser';
 
 type TCGGame = 'mtg' | 'pokemon' | 'onepiece' | 'yugioh';
 
@@ -83,6 +83,7 @@ export class NewCollectionModal extends Modal {
   private scryfallOrder = 'released';
   private autoFetch = true;
   private autoUpdate = false;
+  private format: CollectionFormat = 'paper';
 
   constructor(app: App, plugin: CollectorsPlugin, onCreated: () => void) {
     super(app);
@@ -232,6 +233,16 @@ export class NewCollectionModal extends Modal {
       });
 
     new Setting(el)
+      .setName('Format')
+      .setDesc('Physical cards or MTG Arena digital.')
+      .addDropdown(d => {
+        d.addOption('paper', '🃏 Paper');
+        d.addOption('arena', '🖥 MTG Arena');
+        d.setValue(this.format);
+        d.onChange(v => (this.format = v as CollectionFormat));
+      });
+
+    new Setting(el)
       .addButton(btn => btn.setButtonText('Create').setCta().onClick(() => this.create()))
       .addButton(btn => btn.setButtonText('Cancel').onClick(() => this.close()));
   }
@@ -262,7 +273,7 @@ export class NewCollectionModal extends Modal {
     }
 
     const folder = this.plugin.settings.collectionsFolder;
-    const filename = this.name.replace(/[\\/:*?"<>|]/g, '-') + '.md';
+    const filename = this.name.replace(/[\\/:*?"<>|]/g, '-') + '.collection';
     const path = normalizePath(folder ? `${folder}/${filename}` : filename);
 
     if (this.app.vault.getAbstractFileByPath(path) instanceof TFile) {
@@ -278,7 +289,8 @@ export class NewCollectionModal extends Modal {
       `cssclasses: collectors-file`,
       `plugin-version: ${this.plugin.manifest.version}`,
       `collection-type: ${this.type}`,
-      `collection-name: ${this.name}`,
+      `collection-format: ${this.format}`,
+      `collection-name: ${yamlStr(this.name)}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : '',
       isSet ? `finish-import: ${this.finishImport}` : '',
       isSet ? `all-prints: ${this.allPrints}` : '',

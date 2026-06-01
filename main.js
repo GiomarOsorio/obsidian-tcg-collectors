@@ -38,6 +38,7 @@ async function parseCollectionFile(file, vault) {
   let autoUpdate = false;
   let finishImport;
   let allPrints;
+  let collectionFormat = "paper";
   let lastFetched;
   let pluginVersion;
   let collectionName = file.basename;
@@ -78,6 +79,9 @@ async function parseCollectionFile(file, vault) {
         case "plugin-version":
           pluginVersion = val;
           break;
+        case "collection-format":
+          collectionFormat = val;
+          break;
       }
     }
   }
@@ -88,6 +92,7 @@ async function parseCollectionFile(file, vault) {
     name: collectionName,
     path: file.path,
     type: collectionType,
+    format: collectionFormat,
     setCode,
     scryfallQuery,
     scryfallOrder,
@@ -551,6 +556,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     this.scryfallOrder = "released";
     this.autoFetch = true;
     this.autoUpdate = false;
+    this.format = "paper";
     this.plugin = plugin;
     this.onCreated = onCreated;
   }
@@ -643,6 +649,12 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
         autoUpdateSetting.settingEl.style.display = isSet ? "none" : "";
       });
     });
+    new import_obsidian2.Setting(el).setName("Format").setDesc("Physical cards or MTG Arena digital.").addDropdown((d) => {
+      d.addOption("paper", "\u{1F0CF} Paper");
+      d.addOption("arena", "\u{1F5A5} MTG Arena");
+      d.setValue(this.format);
+      d.onChange((v) => this.format = v);
+    });
     new import_obsidian2.Setting(el).addButton((btn) => btn.setButtonText("Create").setCta().onClick(() => this.create())).addButton((btn) => btn.setButtonText("Cancel").onClick(() => this.close()));
   }
   // ── Coming soon ─────────────────────────────────────────────────────────────
@@ -678,6 +690,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
       `cssclasses: collectors-file`,
       `plugin-version: ${this.plugin.manifest.version}`,
       `collection-type: ${this.type}`,
+      `collection-format: ${this.format}`,
       `collection-name: ${this.name}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : "",
       isSet ? `finish-import: ${this.finishImport}` : "",
@@ -964,9 +977,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     return { owned, missing, loaded };
   }
   async prefetchAllPrices() {
-    const ids = this.collections.flatMap(
-      (c) => c.cards.map((card) => ({ set: card.set.toLowerCase(), collector_number: card.number }))
-    );
+    const ids = this.collections.filter((c) => c.format !== "arena").flatMap((c) => c.cards.map((card) => ({ set: card.set.toLowerCase(), collector_number: card.number })));
     const needed = ids.filter((id) => !this.plugin.priceService.isCached(id.set, id.collector_number));
     if (needed.length === 0) return;
     await this.plugin.priceService.fetchPrices(ids);
@@ -1100,6 +1111,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const nameRow = info.createDiv({ cls: "col-card-name-row" });
     nameRow.createEl("span", { cls: "col-card-name", text: coll.name });
     if (coll.setCode) nameRow.createEl("span", { cls: "col-badge", text: coll.setCode });
+    if (coll.format === "arena") nameRow.createEl("span", { cls: "col-badge col-badge-arena", text: "Arena" });
     const progressWrap = info.createDiv({ cls: "col-progress-wrap" });
     const bar = progressWrap.createDiv({ cls: "col-progress-bar" });
     bar.createDiv({ cls: "col-progress-fill" }).style.width = `${pct2}%`;
@@ -1248,10 +1260,12 @@ var DashboardView = class extends import_obsidian5.ItemView {
       this.renderCards(grid, coll);
     });
     this.renderCards(grid, coll);
-    const needsFetch = coll.cards.some((c) => !this.plugin.priceService.isCached(c.set.toLowerCase(), c.number));
-    if (needsFetch) {
-      const ids = coll.cards.map((c) => ({ set: c.set.toLowerCase(), collector_number: c.number }));
-      this.plugin.priceService.fetchPrices(ids).then(() => this.render());
+    if (coll.format !== "arena") {
+      const needsFetch = coll.cards.some((c) => !this.plugin.priceService.isCached(c.set.toLowerCase(), c.number));
+      if (needsFetch) {
+        const ids = coll.cards.map((c) => ({ set: c.set.toLowerCase(), collector_number: c.number }));
+        this.plugin.priceService.fetchPrices(ids).then(() => this.render());
+      }
     }
   }
   renderDetailHero(root, coll) {
@@ -1360,13 +1374,21 @@ var DashboardView = class extends import_obsidian5.ItemView {
       cls: `col-tile-count${card.count > 0 ? " col-tile-count-owned" : ""}`,
       text: `\xD7${card.count}`
     });
-    const p = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number) ? this.cardPrice(card) : null;
     const priceEl = tileFooter.createEl("span", { cls: "col-tile-price" });
-    if (typeof p === "number") {
-      priceEl.textContent = this.fmt(p);
-    } else {
-      priceEl.textContent = "\u2014";
+    if (coll.format === "arena") {
+      priceEl.textContent = "Digital";
       priceEl.addClass("col-tile-price-empty");
+    } else {
+      const isCached = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number);
+      const p = isCached ? this.cardPrice(card) : void 0;
+      if (typeof p === "number") {
+        priceEl.textContent = this.fmt(p);
+      } else if (!isCached) {
+        priceEl.addClass("col-tile-price-loading");
+      } else {
+        priceEl.textContent = "\u2014";
+        priceEl.addClass("col-tile-price-empty");
+      }
     }
     const applyCount = (delta, e) => {
       e.stopPropagation();
