@@ -1,7 +1,7 @@
 {
   "id": "collectors-plugin",
   "name": "Collectors",
-  "version": "0.3.0",
+  "version": "0.1.0",
   "minAppVersion": "1.0.0",
   "description": "Track your TCG card collections (MTG, Pokémon, and more) directly in Obsidian.",
   "author": "Giomar Osorio",
