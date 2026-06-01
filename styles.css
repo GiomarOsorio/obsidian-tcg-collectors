@@ -620,6 +620,74 @@
 .col-rarity-rare     { color: #f5c518; }
 .col-rarity-mythic   { color: #ff7b22; }
 
+/* ── Settings tab ────────────────────────────────────────────────────────────── */
+.col-settings .col-settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(12px);
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin: -20px -8px 16px;
+  padding: 8px;
+}
+
+.col-settings .col-settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.col-settings .col-settings-tab:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.col-settings .col-settings-tab.col-settings-tab-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.col-settings .col-settings-tab-icon { font-size: 1em; }
+.col-settings .col-settings-tab-label { font-weight: 500; }
+
+.col-settings .col-settings-pane { display: none; }
+.col-settings .col-settings-pane.col-settings-pane-active { display: block; }
+
+.col-settings .col-settings-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 20px 0 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.col-settings .col-settings-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 4px 0 12px;
+  line-height: 1.5;
+}
+
+.col-settings .col-settings-sub { display: none; }
+.col-settings .col-settings-sub.col-settings-sub-active { display: block; }
+
 /* ── New Collection Modal — game tabs ────────────────────────────────────────── */
 .ncm-modal .modal-content { padding: 0; overflow: hidden; }
 
