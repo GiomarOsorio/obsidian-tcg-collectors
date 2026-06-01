@@ -106,7 +106,8 @@ export default class CollectorsPlugin extends Plugin {
       }
 
       if (imageUrl.startsWith('https://')) {
-        const img = tile.createEl('img', {
+        const imgWrap = tile.createDiv({ cls: 'col-tile-img-wrap' });
+        const img = imgWrap.createEl('img', {
           cls: 'col-tile-img',
           attr: { src: imageUrl, alt: name, loading: 'lazy' },
         });
