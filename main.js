@@ -29,6 +29,18 @@ var import_obsidian5 = require("obsidian");
 
 // src/parser.ts
 var CHECKBOX_PATTERN = /<input type="checkbox"/;
+function yamlStr(s) {
+  if (/[:#\[\]{},]/.test(s) || s.startsWith('"') || s.startsWith("'")) {
+    return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return s;
+}
+function unquoteYaml(s) {
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  return s;
+}
 async function parseCollectionFile(file, vault) {
   const content = await vault.read(file);
   let collectionType = "custom";
@@ -47,7 +59,7 @@ async function parseCollectionFile(file, vault) {
     const fmLines = fmMatch[1].split("\n");
     for (const line of fmLines) {
       const [key, ...rest] = line.split(":");
-      const val = rest.join(":").trim();
+      const val = unquoteYaml(rest.join(":").trim());
       switch (key.trim()) {
         case "collection-type":
           collectionType = val;
@@ -228,10 +240,11 @@ async function patchFrontmatter(file, key, value, vault) {
   const endIdx = lines.findIndex((l, i) => i > 0 && l === "---");
   if (endIdx === -1) return;
   const existing = lines.findIndex((l) => l.trimStart().startsWith(`${key}:`));
+  const serialized = `${key}: ${yamlStr(value)}`;
   if (existing !== -1 && existing < endIdx) {
-    lines[existing] = `${key}: ${value}`;
+    lines[existing] = serialized;
   } else {
-    lines.splice(endIdx, 0, `${key}: ${value}`);
+    lines.splice(endIdx, 0, serialized);
   }
   await vault.modify(file, lines.join("\n"));
 }
@@ -294,12 +307,14 @@ function openCardZoom(imageUrl, name, isFoil) {
   img.src = imageUrl;
   img.alt = name;
   img.className = "col-zoom-img";
+  const ambientOpacity = isFoil ? "0.18" : "0";
   if (isFoil) {
     const shine = document.createElement("div");
     shine.className = "col-zoom-shine";
     const glare = document.createElement("div");
     glare.className = "col-zoom-glare";
     rotator.append(img, shine, glare);
+    rotator.style.setProperty("--card-opacity", ambientOpacity);
   } else {
     rotator.append(img);
   }
@@ -349,7 +364,7 @@ function openCardZoom(imageUrl, name, isFoil) {
     rotator.style.setProperty("--pointer-y", "50%");
     rotator.style.setProperty("--bg-x", "50%");
     rotator.style.setProperty("--bg-y", "50%");
-    rotator.style.setProperty("--card-opacity", "0");
+    rotator.style.setProperty("--card-opacity", ambientOpacity);
   });
 }
 
@@ -454,8 +469,12 @@ async function fetchScryfallData(identifiers) {
     return true;
   });
   if (toFetch.length === 0) return;
+  const NULL_ENTRY = { usd: null, usd_foil: null, eur: null, eur_foil: null, tcgplayer_id: null, cardmarket_id: null };
   for (let i = 0; i < toFetch.length; i += 75) {
     const batch = toFetch.slice(i, i + 75);
+    for (const id of batch) {
+      scryfallCache.set(`${id.set.toLowerCase()}#${id.collector_number}`, { ...NULL_ENTRY });
+    }
     try {
       const res = await (0, import_obsidian.requestUrl)({
         url: `${API}/cards/collection`,
@@ -463,7 +482,10 @@ async function fetchScryfallData(identifiers) {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ identifiers: batch })
       });
-      if (res.status < 200 || res.status >= 300) continue;
+      if (res.status < 200 || res.status >= 300) {
+        console.error(`[Collectors] Scryfall /cards/collection returned ${res.status}`);
+        continue;
+      }
       const data = res.json;
       for (const card of data.data) {
         const p = card.prices;
@@ -477,6 +499,7 @@ async function fetchScryfallData(identifiers) {
         });
       }
     } catch (e) {
+      console.error("[Collectors] Scryfall price fetch failed:", e);
     }
   }
 }
@@ -677,7 +700,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
       return;
     }
     const folder = this.plugin.settings.collectionsFolder;
-    const filename = this.name.replace(/[\\/:*?"<>|]/g, "-") + ".md";
+    const filename = this.name.replace(/[\\/:*?"<>|]/g, "-") + ".collection";
     const path = (0, import_obsidian2.normalizePath)(folder ? `${folder}/${filename}` : filename);
     if (this.app.vault.getAbstractFileByPath(path) instanceof import_obsidian2.TFile) {
       new import_obsidian2.Notice(`File already exists: ${path}`);
@@ -691,7 +714,7 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
       `plugin-version: ${this.plugin.manifest.version}`,
       `collection-type: ${this.type}`,
       `collection-format: ${this.format}`,
-      `collection-name: ${this.name}`,
+      `collection-name: ${yamlStr(this.name)}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : "",
       isSet ? `finish-import: ${this.finishImport}` : "",
       isSet ? `all-prints: ${this.allPrints}` : "",
@@ -997,18 +1020,15 @@ var DashboardView = class extends import_obsidian5.ItemView {
   async loadCollections() {
     const { vault } = this.app;
     const folder = this.plugin.settings.collectionsFolder;
+    const allFiles = vault.getFiles().filter((f) => f.extension === "collection");
     let files;
     if (folder) {
-      const abs = vault.getAbstractFileByPath(folder);
-      if (abs && "children" in abs) {
-        files = abs.children.filter(
-          (f) => f instanceof import_obsidian5.TFile && f.extension === "md"
-        );
-      } else {
-        files = vault.getMarkdownFiles();
-      }
+      files = allFiles.filter((f) => {
+        var _a;
+        return f.path.startsWith(folder + "/") || ((_a = f.parent) == null ? void 0 : _a.path) === folder;
+      });
     } else {
-      files = vault.getMarkdownFiles();
+      files = allFiles;
     }
     const results = await Promise.all(
       files.map((f) => parseCollectionFile(f, vault))
@@ -1823,6 +1843,7 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
     await this.loadSettings();
     this.priceService = new PriceService(this.settings);
     this.registerView(DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this));
+    this.registerExtensions(["collection"], "markdown");
     this.addRibbonIcon("layout-grid", "Collectors Dashboard", () => this.activateDashboard());
     this.addCommand({
       id: "open-dashboard",
