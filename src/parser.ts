@@ -3,6 +3,20 @@ import { Collection, CollectionCard, CollectionFormat, CollectionType } from './
 
 const CHECKBOX_PATTERN = /<input type="checkbox"/;
 
+export function yamlStr(s: string): string {
+  if (/[:#\[\]{},]/.test(s) || s.startsWith('"') || s.startsWith("'")) {
+    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+  return s;
+}
+
+function unquoteYaml(s: string): string {
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return s;
+}
+
 export async function parseCollectionFile(
   file: TFile,
   vault: Vault
@@ -26,7 +40,7 @@ export async function parseCollectionFile(
     const fmLines = fmMatch[1].split('\n');
     for (const line of fmLines) {
       const [key, ...rest] = line.split(':');
-      const val = rest.join(':').trim();
+      const val = unquoteYaml(rest.join(':').trim());
       switch (key.trim()) {
         case 'collection-type':
           collectionType = val as CollectionType;
@@ -288,10 +302,11 @@ export async function patchFrontmatter(
   if (endIdx === -1) return;
 
   const existing = lines.findIndex(l => l.trimStart().startsWith(`${key}:`));
+  const serialized = `${key}: ${yamlStr(value)}`;
   if (existing !== -1 && existing < endIdx) {
-    lines[existing] = `${key}: ${value}`;
+    lines[existing] = serialized;
   } else {
-    lines.splice(endIdx, 0, `${key}: ${value}`);
+    lines.splice(endIdx, 0, serialized);
   }
 
   await vault.modify(file, lines.join('\n'));

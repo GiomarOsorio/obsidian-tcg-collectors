@@ -523,11 +523,10 @@
 .col-tile-name {
   font-size: 0.7em;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   display: block;
   color: var(--text-normal);
+  word-break: break-word;
+  line-height: 1.3;
 }
 
 .col-tile-meta {
