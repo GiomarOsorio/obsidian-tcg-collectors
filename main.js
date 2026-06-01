@@ -232,16 +232,6 @@ async function setCardCount(file, cardId, count, vault) {
   }
   await vault.modify(file, lines.join("\n"));
 }
-async function replaceFrontmatter(file, fmLines, vault) {
-  const content = await vault.read(file);
-  const fmEnd = content.indexOf("\n---", 4);
-  if (content.startsWith("---\n") && fmEnd !== -1) {
-    const body = content.slice(fmEnd + 4);
-    await vault.modify(file, fmLines.join("\n") + "\n" + body);
-  } else {
-    await vault.modify(file, fmLines.join("\n") + "\n\n" + content);
-  }
-}
 async function patchFrontmatter(file, key, value, vault) {
   const content = await vault.read(file);
   const fmEnd = content.indexOf("\n---", 4);
@@ -735,23 +725,29 @@ var NewCollectionModal = class extends import_obsidian2.Modal {
     }
     const { file } = this.editTarget;
     const isSet = this.type === "mtg-set";
-    const fmLines = [
-      "---",
-      `cssclasses: collectors-file`,
-      `plugin-version: ${this.plugin.manifest.version}`,
-      `collection-type: ${this.type}`,
-      `collection-format: ${this.format}`,
-      `collection-name: ${yamlStr(this.name)}`,
-      isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : "",
-      isSet ? `finish-import: ${this.finishImport}` : "",
-      isSet ? `all-prints: ${this.allPrints}` : "",
-      !isSet && this.scryfallQuery ? `scryfall-query: ${this.scryfallQuery}` : "",
-      !isSet && this.scryfallOrder && this.scryfallOrder !== "released" ? `scryfall-order: ${this.scryfallOrder}` : "",
-      this.autoUpdate ? "auto-update: true" : "",
-      "---"
-    ].filter(Boolean);
     try {
-      await replaceFrontmatter(file, fmLines, this.app.vault);
+      await this.app.fileManager.processFrontMatter(file, (fm) => {
+        fm["cssclasses"] = "collectors-file";
+        fm["plugin-version"] = this.plugin.manifest.version;
+        fm["collection-type"] = this.type;
+        fm["collection-format"] = this.format;
+        fm["collection-name"] = this.name;
+        if (isSet && this.setCode) fm["set-code"] = this.setCode.toUpperCase();
+        else delete fm["set-code"];
+        if (isSet) {
+          fm["finish-import"] = this.finishImport;
+          fm["all-prints"] = this.allPrints;
+        } else {
+          delete fm["finish-import"];
+          delete fm["all-prints"];
+        }
+        if (!isSet && this.scryfallQuery) fm["scryfall-query"] = this.scryfallQuery;
+        else delete fm["scryfall-query"];
+        if (!isSet && this.scryfallOrder && this.scryfallOrder !== "released") fm["scryfall-order"] = this.scryfallOrder;
+        else delete fm["scryfall-order"];
+        if (this.autoUpdate) fm["auto-update"] = true;
+        else delete fm["auto-update"];
+      });
       this.close();
       if (this.autoFetch && (isSet ? !!this.setCode : !!this.scryfallQuery)) {
         await this.fetchAndPopulate(file, isSet);
