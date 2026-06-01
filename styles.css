@@ -598,8 +598,12 @@
 }
 .col-qty-add  { right: 5px; }
 .col-qty-remove { left: 5px; }
-.col-qty-add:hover  { background: var(--interactive-accent); border-color: var(--interactive-accent); transform: scale(1.15); }
-.col-qty-remove:hover { background: rgba(239,83,80,0.75); border-color: rgba(239,83,80,0.75); transform: scale(1.15); }
+@media (hover: hover) {
+  .col-qty-add:hover    { background: var(--interactive-accent); border-color: var(--interactive-accent); transform: scale(1.15); }
+  .col-qty-remove:hover { background: rgba(239,83,80,0.75); border-color: rgba(239,83,80,0.75); transform: scale(1.15); }
+}
+.col-qty-add:active    { background: var(--interactive-accent); border-color: var(--interactive-accent); transform: scale(1.15); }
+.col-qty-remove:active { background: rgba(239,83,80,0.75); border-color: rgba(239,83,80,0.75); transform: scale(1.15); }
 
 /* ── Rarity colors ─────────────────────────────────────────────────────────────── */
 .col-rarity {
