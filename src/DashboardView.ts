@@ -114,18 +114,13 @@ export class DashboardView extends ItemView {
     const { vault } = this.app;
     const folder = this.plugin.settings.collectionsFolder;
 
+    const allFiles = vault.getFiles().filter(f => f.extension === 'collection');
+
     let files: TFile[];
     if (folder) {
-      const abs = vault.getAbstractFileByPath(folder);
-      if (abs && 'children' in abs) {
-        files = (abs as any).children.filter(
-          (f: any) => f instanceof TFile && f.extension === 'md'
-        );
-      } else {
-        files = vault.getMarkdownFiles();
-      }
+      files = allFiles.filter(f => f.path.startsWith(folder + '/') || f.parent?.path === folder);
     } else {
-      files = vault.getMarkdownFiles();
+      files = allFiles;
     }
 
     const results = await Promise.all(

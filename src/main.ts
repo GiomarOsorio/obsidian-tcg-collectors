@@ -18,6 +18,8 @@ export default class CollectorsPlugin extends Plugin {
 
     this.registerView(DASHBOARD_VIEW_TYPE, leaf => new DashboardView(leaf, this));
 
+    this.registerExtensions(['collection'], 'markdown');
+
     this.addRibbonIcon('layout-grid', 'Collectors Dashboard', () => this.activateDashboard());
 
     this.addCommand({
