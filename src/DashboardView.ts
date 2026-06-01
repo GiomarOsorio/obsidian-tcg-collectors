@@ -536,13 +536,14 @@ export class DashboardView extends ItemView {
     }
 
     if (card.imageUrl) {
-      const img = tile.createEl('img', {
+      const imgWrap = tile.createDiv({ cls: 'col-tile-img-wrap' });
+      const img = imgWrap.createEl('img', {
         cls: 'col-tile-img',
         attr: { src: card.imageUrl, alt: card.name, loading: 'lazy' },
       });
       img.addEventListener('error', () => {
         img.style.display = 'none';
-        tile.createEl('div', { cls: 'col-tile-img-fallback', text: card.name[0] ?? '?' });
+        imgWrap.createEl('div', { cls: 'col-tile-img-fallback', text: card.name[0] ?? '?' });
       });
       tile.addEventListener('click', () => openCardZoom(card.imageUrl, card.name, isFoil));
     } else {

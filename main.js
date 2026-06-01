@@ -1337,14 +1337,15 @@ var DashboardView = class extends import_obsidian5.ItemView {
       tile.createDiv({ cls: "col-foil-badge", text: "F" });
     }
     if (card.imageUrl) {
-      const img = tile.createEl("img", {
+      const imgWrap = tile.createDiv({ cls: "col-tile-img-wrap" });
+      const img = imgWrap.createEl("img", {
         cls: "col-tile-img",
         attr: { src: card.imageUrl, alt: card.name, loading: "lazy" }
       });
       img.addEventListener("error", () => {
         var _a2;
         img.style.display = "none";
-        tile.createEl("div", { cls: "col-tile-img-fallback", text: (_a2 = card.name[0]) != null ? _a2 : "?" });
+        imgWrap.createEl("div", { cls: "col-tile-img-fallback", text: (_a2 = card.name[0]) != null ? _a2 : "?" });
       });
       tile.addEventListener("click", () => openCardZoom(card.imageUrl, card.name, isFoil));
     } else {
@@ -1869,7 +1870,8 @@ var CollectorsPlugin = class extends import_obsidian8.Plugin {
         tile.createDiv({ cls: "col-foil-badge", text: "F" });
       }
       if (imageUrl.startsWith("https://")) {
-        const img = tile.createEl("img", {
+        const imgWrap = tile.createDiv({ cls: "col-tile-img-wrap" });
+        const img = imgWrap.createEl("img", {
           cls: "col-tile-img",
           attr: { src: imageUrl, alt: name, loading: "lazy" }
         });
