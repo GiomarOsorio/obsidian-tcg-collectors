@@ -21,12 +21,15 @@ export function openCardZoom(imageUrl: string, name: string, isFoil: boolean): v
   img.alt = name;
   img.className = 'col-zoom-img';
 
+  const ambientOpacity = isFoil ? '0.18' : '0';
+
   if (isFoil) {
     const shine = document.createElement('div');
     shine.className = 'col-zoom-shine';
     const glare = document.createElement('div');
     glare.className = 'col-zoom-glare';
     rotator.append(img, shine, glare);
+    rotator.style.setProperty('--card-opacity', ambientOpacity);
   } else {
     rotator.append(img);
   }
@@ -76,6 +79,6 @@ export function openCardZoom(imageUrl: string, name: string, isFoil: boolean): v
     rotator.style.setProperty('--pointer-y', '50%');
     rotator.style.setProperty('--bg-x', '50%');
     rotator.style.setProperty('--bg-y', '50%');
-    rotator.style.setProperty('--card-opacity', '0');
+    rotator.style.setProperty('--card-opacity', ambientOpacity);
   });
 }
