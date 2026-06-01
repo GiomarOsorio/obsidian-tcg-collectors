@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
 import { CollectionFormat, CollectionType } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
-import { appendCards, patchFrontmatter } from './parser';
+import { appendCards, patchFrontmatter, yamlStr } from './parser';
 
 type TCGGame = 'mtg' | 'pokemon' | 'onepiece' | 'yugioh';
 
@@ -290,7 +290,7 @@ export class NewCollectionModal extends Modal {
       `plugin-version: ${this.plugin.manifest.version}`,
       `collection-type: ${this.type}`,
       `collection-format: ${this.format}`,
-      `collection-name: ${this.name}`,
+      `collection-name: ${yamlStr(this.name)}`,
       isSet && this.setCode ? `set-code: ${this.setCode.toUpperCase()}` : '',
       isSet ? `finish-import: ${this.finishImport}` : '',
       isSet ? `all-prints: ${this.allPrints}` : '',
