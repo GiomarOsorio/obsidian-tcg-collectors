@@ -1,6 +1,6 @@
 import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
-import { CollectionFormat, CollectionType, type TCGGame, type Collection } from './types';
+import { CollectionFormat, CollectionType, PokemonVariantImport, type TCGGame, type Collection } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
 import { fetchPokemonSetCards, pokemonCardToMarkdownRows, fetchAllSets, TCGDexSetBrief } from './TCGDexService';
 import { appendCards, patchFrontmatter, replaceFrontmatter, yamlStr, extractOwnedMap, clearCardRows, applyOwnedStates } from './parser';
@@ -81,6 +81,7 @@ export class NewCollectionModal extends Modal {
   // Pokémon form state
   private tcgdexSetId = '';
   private pokemonFormType: 'catalog' | 'custom' = 'catalog';
+  private pokemonVariantImport: PokemonVariantImport = 'all';
 
   constructor(
     app: App,
@@ -104,7 +105,8 @@ export class NewCollectionModal extends Modal {
       this.scryfallOrder = c.scryfallOrder ?? 'released';
       this.autoUpdate    = c.autoUpdate;
       this.autoFetch     = false;
-      this.tcgdexSetId   = c.tcgdexSetId ?? '';
+      this.tcgdexSetId          = c.tcgdexSetId ?? '';
+      this.pokemonVariantImport = c.pokemonVariantImport ?? 'all';
     }
   }
 
@@ -357,6 +359,19 @@ export class NewCollectionModal extends Modal {
     });
 
     new Setting(el)
+      .setName(t('field_pokemon_variant'))
+      .setDesc(t('field_pokemon_variant_desc'))
+      .addDropdown(d => {
+        d.addOption('all',          t('pokemon_variant_all'));
+        d.addOption('normal',       t('pokemon_variant_normal'));
+        d.addOption('reverse',      t('pokemon_variant_reverse'));
+        d.addOption('holo',         t('pokemon_variant_holo'));
+        d.addOption('firstEdition', t('pokemon_variant_first_edition'));
+        d.setValue(this.pokemonVariantImport);
+        d.onChange(v => (this.pokemonVariantImport = v as PokemonVariantImport));
+      });
+
+    new Setting(el)
       .addButton(btn => btn
         .setButtonText(this.editTarget ? t('btn_save') : t('btn_create'))
         .setCta()
@@ -594,6 +609,7 @@ export class NewCollectionModal extends Modal {
       `collection-type: pokemon-set`,
       `collection-name: ${yamlStr(this.name)}`,
       this.tcgdexSetId ? `tcgdex-set-id: ${this.tcgdexSetId}` : '',
+      this.pokemonVariantImport !== 'all' ? `pokemon-variant-import: ${this.pokemonVariantImport}` : '',
       '---',
     ].filter(Boolean);
   }
@@ -649,7 +665,12 @@ export class NewCollectionModal extends Modal {
         this.tcgdexSetId,
         (fetched, total) => new Notice(t('notice_fetching_pokemon_progress', { fetched, total }))
       );
-      const rawRows = cards.flatMap(pokemonCardToMarkdownRows);
+      const suffixMap: Record<string, string> = {
+        normal: '_n', reverse: '_r', holo: '_h', firstEdition: '_fe',
+      };
+      const targetSuffix = suffixMap[this.pokemonVariantImport] ?? null;
+      const rawRows = cards.flatMap(pokemonCardToMarkdownRows)
+        .filter(row => !targetSuffix || row.includes(`${targetSuffix}">`));
       const rows = previousOwned ? applyOwnedStates(rawRows, previousOwned) : rawRows;
 
       if (previousOwned) {

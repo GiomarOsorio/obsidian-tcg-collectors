@@ -1,5 +1,5 @@
 import { TFile, Vault } from 'obsidian';
-import { Collection, CollectionCard, CollectionFormat, CollectionType } from './types';
+import { Collection, CollectionCard, CollectionFormat, CollectionType, PokemonVariantImport } from './types';
 
 const SUFFIX_PATTERN = /_([nrhf]e?)$/;
 
@@ -37,6 +37,7 @@ export async function parseCollectionFile(
   let pluginVersion: string | undefined;
   let collectionName = file.basename;
   let tcgdexSetId: string | undefined;
+  let pokemonVariantImport: PokemonVariantImport | undefined;
 
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (fmMatch) {
@@ -81,6 +82,9 @@ export async function parseCollectionFile(
         case 'tcgdex-set-id':
           tcgdexSetId = val;
           break;
+        case 'pokemon-variant-import':
+          pokemonVariantImport = val as PokemonVariantImport;
+          break;
       }
     }
   }
@@ -97,6 +101,7 @@ export async function parseCollectionFile(
     format: collectionFormat,
     setCode,
     tcgdexSetId,
+    pokemonVariantImport,
     scryfallQuery,
     scryfallOrder,
     autoUpdate,
