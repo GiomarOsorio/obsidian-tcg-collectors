@@ -1,16 +1,21 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import type CollectorsPlugin from './main';
-import type { PriceSource } from './types';
+import type { PriceSource, TCGGame } from './types';
+import { t } from './i18n';
 
-const PRICE_SOURCE_LABELS: Record<PriceSource, string> = {
-  'scryfall-usd': 'Scryfall — USD (TCGPlayer market)',
-  'scryfall-eur': 'Scryfall — EUR (Cardmarket trend)',
-  'tcgplayer':    'TCGPlayer (API key required)',
-  'cardmarket':   'Cardmarket (API credentials required)',
-};
+type TabId = 'general' | TCGGame;
+
+const TABS = (): { id: TabId; icon: string; label: string }[] => [
+  { id: 'general',  icon: '⚙',  label: t('settings_tab_general')  },
+  { id: 'mtg',      icon: '✦',  label: t('settings_tab_mtg')      },
+  { id: 'pokemon',  icon: '⚡', label: t('settings_tab_pokemon')  },
+  { id: 'onepiece', icon: '☠',  label: t('settings_tab_onepiece') },
+  { id: 'yugioh',   icon: '👁', label: t('settings_tab_yugioh')   },
+];
 
 export class CollectorsSettingTab extends PluginSettingTab {
   plugin: CollectorsPlugin;
+  private activeTab: TabId = 'general';
 
   constructor(app: App, plugin: CollectorsPlugin) {
     super(app, plugin);
@@ -20,87 +25,136 @@ export class CollectorsSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    containerEl.addClass('col-settings');
 
-    // ── General ────────────────────────────────────────────────────────────────
-    containerEl.createEl('h2', { text: 'Collectors Settings' });
+    const tabBar = containerEl.createDiv({ cls: 'col-settings-tabs' });
+    const body   = containerEl.createDiv({ cls: 'col-settings-body' });
 
-    new Setting(containerEl)
-      .setName('Collections folder')
-      .setDesc('Folder to scan for collection files. Leave empty to scan the entire vault. Example: "004 MTG"')
-      .addText(t =>
-        t.setPlaceholder('e.g. 004 MTG')
+    const paneEls: Partial<Record<TabId, HTMLElement>> = {};
+    const tabEls:  Partial<Record<TabId, HTMLElement>> = {};
+
+    const switchTab = (id: TabId) => {
+      this.activeTab = id;
+      for (const k of Object.keys(paneEls) as TabId[]) {
+        paneEls[k]!.toggleClass('col-settings-pane-active', k === id);
+        tabEls[k]!.toggleClass('col-settings-tab-active',   k === id);
+      }
+    };
+
+    for (const { id, icon, label } of TABS()) {
+      const tab = tabBar.createEl('button', { cls: 'col-settings-tab' });
+      tab.createEl('span', { cls: 'col-settings-tab-icon', text: icon });
+      tab.createEl('span', { cls: 'col-settings-tab-label', text: label });
+      tab.addEventListener('click', () => switchTab(id));
+      tabEls[id]  = tab;
+      paneEls[id] = body.createDiv({ cls: 'col-settings-pane' });
+    }
+
+    this.buildGeneral(paneEls['general']!);
+    this.buildMTG(paneEls['mtg']!);
+    this.buildPokemon(paneEls['pokemon']!);
+    this.buildComingSoon(paneEls['onepiece']!, 'onepiece', '☠', 'One Piece');
+    this.buildComingSoon(paneEls['yugioh']!,   'yugioh',   '👁', 'Yu-Gi-Oh!');
+
+    switchTab(this.activeTab);
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  private sectionTitle(el: HTMLElement, text: string) {
+    el.createEl('h3', { cls: 'col-settings-section-title', text });
+  }
+
+  private sectionDesc(el: HTMLElement, text: string) {
+    el.createEl('p', { cls: 'col-settings-desc', text });
+  }
+
+  // ── General ───────────────────────────────────────────────────────────────────
+
+  private buildGeneral(el: HTMLElement) {
+    this.sectionTitle(el, t('settings_section_collections'));
+
+    new Setting(el)
+      .setName(t('settings_folder'))
+      .setDesc(t('settings_folder_desc'))
+      .addText(tx =>
+        tx.setPlaceholder(t('settings_folder_ph'))
           .setValue(this.plugin.settings.collectionsFolder)
           .onChange(async v => {
             this.plugin.settings.collectionsFolder = v.trim();
             await this.plugin.saveSettings();
           })
       );
+  }
 
-    new Setting(containerEl)
-      .setName('Auto-detect collections')
-      .setDesc('Detect collection files by their checkbox table format, not only by frontmatter.')
-      .addToggle(t =>
-        t.setValue(this.plugin.settings.autoDetect)
+  // ── MTG ───────────────────────────────────────────────────────────────────────
+
+  private buildMTG(el: HTMLElement) {
+    if (!this.plugin.settings.enabledGames) {
+      this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
+    }
+
+    this.sectionTitle(el, t('settings_tab_mtg'));
+
+    new Setting(el)
+      .setName(t('settings_enable_game', { game: 'Magic: The Gathering' }))
+      .setDesc(t('settings_enable_game_desc'))
+      .addToggle(tx =>
+        tx.setValue(this.plugin.settings.enabledGames['mtg'] ?? true)
           .onChange(async v => {
-            this.plugin.settings.autoDetect = v;
+            this.plugin.settings.enabledGames['mtg'] = v;
             await this.plugin.saveSettings();
           })
       );
 
-    new Setting(containerEl)
-      .setName('Card view in files')
-      .setDesc('Show collection cards as visual tiles in reading mode. Disable to show the raw table.')
-      .addToggle(t =>
-        t.setValue(this.plugin.settings.cardViewInFiles)
-          .onChange(async v => {
-            this.plugin.settings.cardViewInFiles = v;
-            await this.plugin.saveSettings();
-          })
-      );
+    // ── Card Data ────────────────────────────────────────────────────────────
+    this.sectionTitle(el, t('settings_section_card_data'));
+    this.sectionDesc(el, t('settings_card_data_desc'));
 
-    // ── Price Sources ──────────────────────────────────────────────────────────
-    containerEl.createEl('h2', { text: 'Price Sources' });
-    containerEl.createEl('p', {
-      cls: 'setting-item-description',
-      text: 'Choose where to fetch card prices from. If a provider has no API key configured, Scryfall USD is used as fallback.',
-    });
+    new Setting(el)
+      .setName(t('settings_source'))
+      .addDropdown(d => {
+        d.addOption('scryfall', 'Scryfall');
+        d.setValue('scryfall');
+        d.setDisabled(true);
+      });
 
-    const tcgSection = containerEl.createDiv();
-    const cmSection = containerEl.createDiv();
+    // ── Prices ───────────────────────────────────────────────────────────────
+    this.sectionTitle(el, t('settings_section_prices'));
+    this.sectionDesc(el, t('settings_prices_desc'));
+
+    const tcgSection = el.createDiv({ cls: 'col-settings-sub' });
+    const cmSection  = el.createDiv({ cls: 'col-settings-sub' });
 
     const updateVisibility = (source: PriceSource) => {
-      tcgSection.style.display = source === 'tcgplayer' ? '' : 'none';
-      cmSection.style.display  = source === 'cardmarket' ? '' : 'none';
+      tcgSection.toggleClass('col-settings-sub-active', source === 'tcgplayer');
+      cmSection.toggleClass('col-settings-sub-active',  source === 'cardmarket');
     };
 
-    new Setting(containerEl)
-      .setName('Price source')
-      .setDesc('Active price provider for all collections.')
+    new Setting(el)
+      .setName(t('settings_provider'))
       .addDropdown(d => {
-        for (const [val, label] of Object.entries(PRICE_SOURCE_LABELS)) {
-          d.addOption(val, label);
-        }
+        d.addOption('scryfall-usd', t('settings_price_scryfall_usd'));
+        d.addOption('scryfall-eur', t('settings_price_scryfall_eur'));
+        d.addOption('tcgplayer',    t('settings_price_tcgplayer'));
+        d.addOption('cardmarket',   t('settings_price_cardmarket'));
         d.setValue(this.plugin.settings.priceSource);
         updateVisibility(this.plugin.settings.priceSource);
         d.onChange(async v => {
           this.plugin.settings.priceSource = v as PriceSource;
-          await this.plugin.saveSettings();
+          await this.plugin.saveSettings(true);
           updateVisibility(v as PriceSource);
         });
       });
 
-    // ── TCGPlayer section ──────────────────────────────────────────────────────
-    tcgSection.createEl('h3', { text: 'TCGPlayer' });
-    tcgSection.createEl('p', {
-      cls: 'setting-item-description',
-      text: 'Get your public API key at developer.tcgplayer.com. Uses market price (USD).',
-    });
-
+    // TCGPlayer
+    this.sectionTitle(tcgSection, t('settings_section_tcgplayer'));
+    this.sectionDesc(tcgSection, t('settings_tcgplayer_desc'));
     new Setting(tcgSection)
-      .setName('API public key')
-      .setDesc('Bearer token for TCGPlayer API v1.39.0.')
-      .addText(t =>
-        t.setPlaceholder('Paste your public key here')
+      .setName(t('settings_tcgplayer_key'))
+      .setDesc(t('settings_tcgplayer_key_desc'))
+      .addText(tx =>
+        tx.setPlaceholder(t('settings_tcgplayer_ph'))
           .setValue(this.plugin.settings.tcgplayerKey)
           .onChange(async v => {
             this.plugin.settings.tcgplayerKey = v.trim();
@@ -108,55 +162,113 @@ export class CollectorsSettingTab extends PluginSettingTab {
           })
       );
 
-    // ── Cardmarket section ─────────────────────────────────────────────────────
-    cmSection.createEl('h3', { text: 'Cardmarket' });
-    cmSection.createEl('p', {
-      cls: 'setting-item-description',
-      text: 'Requires OAuth 1.0a credentials from your Cardmarket developer account. Uses TREND price (EUR).',
+    // Cardmarket
+    this.sectionTitle(cmSection, t('settings_section_cardmarket'));
+    this.sectionDesc(cmSection, t('settings_cardmarket_desc'));
+    for (const [key, labelKey, phKey] of [
+      ['cardmarketAppToken',    'settings_cm_app_token',    'settings_cm_app_token'    ],
+      ['cardmarketAppSecret',   'settings_cm_app_secret',   'settings_cm_app_secret'   ],
+      ['cardmarketAccessToken', 'settings_cm_access_token', 'settings_cm_access_token' ],
+      ['cardmarketAccessSecret','settings_cm_access_secret','settings_cm_access_secret'],
+    ] as const) {
+      new Setting(cmSection)
+        .setName(t(labelKey))
+        .addText(tx =>
+          tx.setPlaceholder(t(phKey))
+            .setValue((this.plugin.settings as any)[key])
+            .onChange(async v => {
+              (this.plugin.settings as any)[key] = v.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+    }
+  }
+
+  // ── Pokémon ───────────────────────────────────────────────────────────────────
+
+  private buildPokemon(el: HTMLElement) {
+    if (!this.plugin.settings.enabledGames) {
+      this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
+    }
+
+    this.sectionTitle(el, '⚡  Pokémon');
+
+    new Setting(el)
+      .setName(t('settings_enable_game', { game: 'Pokémon' }))
+      .setDesc(t('settings_enable_game_desc'))
+      .addToggle(tx =>
+        tx.setValue(this.plugin.settings.enabledGames['pokemon'] ?? true)
+          .onChange(async v => {
+            this.plugin.settings.enabledGames['pokemon'] = v;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // ── Card Data ────────────────────────────────────────────────────────────
+    this.sectionTitle(el, t('settings_section_card_data'));
+    this.sectionDesc(el, t('settings_card_data_desc'));
+
+    new Setting(el)
+      .setName(t('settings_source'))
+      .addDropdown(d => {
+        d.addOption('tcgdex', 'TCGdex');
+        d.setValue('tcgdex');
+        d.setDisabled(true);
+      });
+
+    // ── Prices ───────────────────────────────────────────────────────────────
+    this.sectionTitle(el, t('settings_section_prices'));
+    this.sectionDesc(el, t('settings_pokemon_price_source_desc'));
+
+    new Setting(el)
+      .setName(t('settings_pokemon_price_source'))
+      .addDropdown(d => {
+        d.addOption('tcgplayer',  t('settings_pokemon_tcgplayer'));
+        d.addOption('cardmarket', t('settings_pokemon_cardmarket'));
+        d.setValue(this.plugin.settings.pokemonPriceSource ?? 'tcgplayer');
+        d.onChange(async v => {
+          this.plugin.settings.pokemonPriceSource = v as 'tcgplayer' | 'cardmarket';
+          await this.plugin.saveSettings(true);
+        });
+      });
+
+    // TCGdex sponsor link
+    const sponsorDiv = el.createDiv({ cls: 'col-settings-sponsor' });
+    sponsorDiv.createEl('span', { text: t('settings_pokemon_sponsor_desc') + ' ' });
+    sponsorDiv.createEl('a', {
+      text: t('settings_pokemon_sponsor'),
+      href: 'https://github.com/tcgdex/cards-database#sponsors-',
     });
+  }
 
-    new Setting(cmSection)
-      .setName('App token')
-      .addText(t =>
-        t.setPlaceholder('App token')
-          .setValue(this.plugin.settings.cardmarketAppToken)
+  // ── Coming soon ───────────────────────────────────────────────────────────────
+
+  private buildComingSoon(el: HTMLElement, game: TCGGame, icon: string, label: string) {
+    if (!this.plugin.settings.enabledGames) {
+      this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
+    }
+
+    this.sectionTitle(el, `${icon}  ${label}`);
+
+    new Setting(el)
+      .setName(t('settings_enable_game', { game: label }))
+      .setDesc(t('settings_enable_game_desc'))
+      .addToggle(tx =>
+        tx.setValue(this.plugin.settings.enabledGames[game] ?? true)
           .onChange(async v => {
-            this.plugin.settings.cardmarketAppToken = v.trim();
+            this.plugin.settings.enabledGames[game] = v;
             await this.plugin.saveSettings();
           })
       );
 
-    new Setting(cmSection)
-      .setName('App secret')
-      .addText(t =>
-        t.setPlaceholder('App secret')
-          .setValue(this.plugin.settings.cardmarketAppSecret)
-          .onChange(async v => {
-            this.plugin.settings.cardmarketAppSecret = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
+    this.sectionTitle(el, t('settings_section_card_data'));
+    const cardBox = el.createDiv({ cls: 'col-settings-coming-soon' });
+    cardBox.createEl('span', { cls: 'col-settings-coming-soon-icon', text: '🚧' });
+    cardBox.createEl('span', { text: t('settings_no_card_data', { game: label }) });
 
-    new Setting(cmSection)
-      .setName('Access token')
-      .addText(t =>
-        t.setPlaceholder('Access token')
-          .setValue(this.plugin.settings.cardmarketAccessToken)
-          .onChange(async v => {
-            this.plugin.settings.cardmarketAccessToken = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(cmSection)
-      .setName('Access token secret')
-      .addText(t =>
-        t.setPlaceholder('Access token secret')
-          .setValue(this.plugin.settings.cardmarketAccessSecret)
-          .onChange(async v => {
-            this.plugin.settings.cardmarketAccessSecret = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
+    this.sectionTitle(el, t('settings_section_prices'));
+    const priceBox = el.createDiv({ cls: 'col-settings-coming-soon' });
+    priceBox.createEl('span', { cls: 'col-settings-coming-soon-icon', text: '🚧' });
+    priceBox.createEl('span', { text: t('settings_no_price_data', { game: label }) });
   }
 }

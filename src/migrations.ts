@@ -43,13 +43,19 @@ export async function migrateCollection(
   currentVersion: string,
   vault: Vault
 ): Promise<boolean> {
+  // Already at current version — nothing to do, no writes
+  if (fileVersion === currentVersion) return false;
   if (fileVersion && !semverGt(currentVersion, fileVersion)) return false;
 
   const pending = fileVersion
     ? MIGRATIONS.filter(m => semverGt(m.toVersion, fileVersion))
     : [...MIGRATIONS];
 
-  if (pending.length === 0) return false;
+  if (pending.length === 0) {
+    // No schema migrations needed but version stamp is missing/outdated — write once
+    await patchFrontmatter(file, 'plugin-version', currentVersion, vault);
+    return true;
+  }
 
   let content = await vault.read(file);
   for (const m of pending) {
