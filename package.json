@@ -1,6 +1,6 @@
 {
   "name": "collectors-plugin",
-  "version": "0.1.5-beta",
+  "version": "0.1.5",
   "description": "Obsidian plugin for tracking TCG card collections",
   "main": "main.js",
   "scripts": {
