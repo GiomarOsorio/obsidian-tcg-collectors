@@ -101,7 +101,7 @@ export const en = {
   field_auto_update_desc:  'Check for new cards on Scryfall every time the dashboard opens. Ideal for theme collections.',
   field_type:              'Type',
   type_mtg_set:            'MTG Set / Product',
-  type_mtg_theme:          'MTG Theme Collection',
+  type_mtg_theme:          'Custom',
   field_format:            'Format',
   field_format_desc:       'Physical cards or MTG Arena digital.',
   format_paper:            '🃏 Paper',
