@@ -851,6 +851,7 @@ var en = {
   field_tcgdex_set_id_desc: "The TCGdex set identifier. Find it at tcgdex.dev.",
   field_tcgdex_set_id_ph: "e.g. swsh1, sv10, base1",
   // Pokémon notices
+  refetch_warning_pokemon: "\u26A0 All cards will be replaced with cards from the new set. Previously owned cards will have their status preserved.",
   notice_fetching_pokemon: 'Fetching Pok\xE9mon cards for "{name}"\u2026',
   notice_fetching_pokemon_progress: "Fetching {fetched}/{total} cards\u2026",
   notice_pokemon_added: 'Added {count} new Pok\xE9mon cards to "{name}".',
@@ -1022,6 +1023,7 @@ var es = {
   pokemon_variant_first_edition: "Solo 1ra Edici\xF3n",
   field_tcgdex_set_id_desc: "El identificador del set en TCGdex. B\xFAscalo en tcgdex.dev.",
   field_tcgdex_set_id_ph: "ej. swsh1, sv10, base1",
+  refetch_warning_pokemon: "\u26A0 Todas las cartas ser\xE1n reemplazadas por las del nuevo set. Las cartas marcadas como pose\xEDdas conservar\xE1n su estado.",
   notice_fetching_pokemon: 'Obteniendo cartas de Pok\xE9mon para "{name}"\u2026',
   notice_fetching_pokemon_progress: "Obteniendo {fetched}/{total} cartas\u2026",
   notice_pokemon_added: 'Se agregaron {count} cartas de Pok\xE9mon a "{name}".',
@@ -2104,6 +2106,10 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
     this.tcgdexSetId = "";
     this.pokemonFormType = "catalog";
     this.pokemonVariantImport = "all";
+    // Originals for change-detection in edit mode
+    this.originalSetCode = "";
+    this.originalScryfallQuery = "";
+    this.originalTcgdexSetId = "";
     this.plugin = plugin;
     this.onCreated = onCreated;
     if (editTarget) {
@@ -2121,6 +2127,9 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
       this.autoFetch = false;
       this.tcgdexSetId = (_h = c.tcgdexSetId) != null ? _h : "";
       this.pokemonVariantImport = (_i = c.pokemonVariantImport) != null ? _i : "all";
+      this.originalSetCode = this.setCode;
+      this.originalScryfallQuery = this.scryfallQuery;
+      this.originalTcgdexSetId = this.tcgdexSetId;
     }
   }
   onOpen() {
@@ -2129,7 +2138,11 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
     contentEl.addClass("ncm-modal");
     contentEl.createEl("h2", { cls: "ncm-title", text: this.editTarget ? t("modal_edit_title") : t("modal_new_title") });
     const enabledGames = (_a = this.plugin.settings.enabledGames) != null ? _a : {};
-    const visibleGames = GAME_ORDER.filter((g) => enabledGames[g] !== false);
+    let visibleGames = GAME_ORDER.filter((g) => enabledGames[g] !== false);
+    if (this.editTarget) {
+      const editGame = this.editTarget.collection.type.startsWith("pokemon") ? "pokemon" : "mtg";
+      visibleGames = visibleGames.filter((g) => g === editGame);
+    }
     if (!visibleGames.includes(this.activeGame)) {
       this.activeGame = (_b = visibleGames[0]) != null ? _b : "mtg";
     }
@@ -2175,8 +2188,19 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
     new import_obsidian4.Setting(el).setName(t("field_name")).setDesc(t("field_name_desc")).addText(
       (tx) => tx.setPlaceholder(t("field_name_placeholder")).setValue(this.name).onChange((v) => this.name = v.trim())
     );
+    let autoFetchToggleComp = null;
+    let refetchWarning = null;
+    const syncRefetch = () => {
+      const changed = this.setCode !== this.originalSetCode || this.scryfallQuery !== this.originalScryfallQuery;
+      this.autoFetch = changed;
+      autoFetchToggleComp == null ? void 0 : autoFetchToggleComp.setValue(changed);
+      if (refetchWarning) refetchWarning.style.display = changed ? "" : "none";
+    };
     const setCodeSetting = new import_obsidian4.Setting(el).setName(t("field_set_code")).setDesc(t("field_set_code_desc")).addText(
-      (tx) => tx.setPlaceholder(t("field_set_code_ph")).setValue(this.setCode).onChange((v) => this.setCode = v.trim().toLowerCase())
+      (tx) => tx.setPlaceholder(t("field_set_code_ph")).setValue(this.setCode).onChange((v) => {
+        this.setCode = v.trim().toLowerCase();
+        if (this.editTarget) syncRefetch();
+      })
     );
     const finishSetting = new import_obsidian4.Setting(el).setName(t("field_finish")).setDesc(t("field_finish_desc")).addDropdown((d) => {
       d.addOption("all", t("finish_all"));
@@ -2206,14 +2230,17 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
         this.scryfallOrder = (_a = parsed.order) != null ? _a : "released";
         previewEl.textContent = parsed.query ? `Query: ${parsed.query}${parsed.order ? `  |  order: ${parsed.order}` : ""}` : "";
         previewEl.style.display = parsed.query ? "" : "none";
+        if (this.editTarget) syncRefetch();
       });
     });
     queryWrap.appendChild(previewEl);
-    let refetchWarning = null;
-    const autoFetchSetting = new import_obsidian4.Setting(el).setName(this.editTarget ? t("field_refetch") : t("field_autofetch")).setDesc(this.editTarget ? t("field_refetch_desc") : t("field_autofetch_desc")).addToggle((tx) => tx.setValue(this.autoFetch).onChange((v) => {
-      this.autoFetch = v;
-      if (refetchWarning) refetchWarning.style.display = v ? "" : "none";
-    }));
+    const autoFetchSetting = new import_obsidian4.Setting(el).setName(this.editTarget ? t("field_refetch") : t("field_autofetch")).setDesc(this.editTarget ? t("field_refetch_desc") : t("field_autofetch_desc")).addToggle((tx) => {
+      autoFetchToggleComp = tx;
+      tx.setValue(this.autoFetch).onChange((v) => {
+        this.autoFetch = v;
+        if (refetchWarning) refetchWarning.style.display = v ? "" : "none";
+      });
+    });
     if (this.editTarget) {
       refetchWarning = el.createDiv({ cls: "ncm-refetch-warning" });
       refetchWarning.style.display = this.autoFetch ? "" : "none";
@@ -2253,6 +2280,12 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
   // ── Pokémon form ────────────────────────────────────────────────────────────
   renderPokemonForm(el) {
     let nameInputEl = null;
+    let pokemonRefetchWarning = null;
+    const syncPokemonRefetch = () => {
+      const changed = this.tcgdexSetId !== this.originalTcgdexSetId;
+      this.autoFetch = changed;
+      if (pokemonRefetchWarning) pokemonRefetchWarning.style.display = changed ? "" : "none";
+    };
     new import_obsidian4.Setting(el).setName(t("field_name")).setDesc(t("field_name_desc")).addText((tx) => {
       tx.setPlaceholder(t("field_name_ph_pokemon")).setValue(this.name).onChange((v) => this.name = v.trim());
       nameInputEl = tx.inputEl;
@@ -2270,10 +2303,20 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
     const customSection = el.createDiv({ cls: "ncm-pokemon-custom" });
     if (this.pokemonFormType === "custom") catalogSection.style.display = "none";
     else customSection.style.display = "none";
-    this.renderSetCatalog(catalogSection, () => nameInputEl);
+    this.renderSetCatalog(catalogSection, () => nameInputEl, () => {
+      if (this.editTarget) syncPokemonRefetch();
+    });
     new import_obsidian4.Setting(customSection).setName(t("field_tcgdex_set_id")).setDesc(t("field_tcgdex_set_id_desc")).addText(
-      (tx) => tx.setPlaceholder(t("field_tcgdex_set_id_ph")).setValue(this.tcgdexSetId).onChange((v) => this.tcgdexSetId = v.trim().toLowerCase())
+      (tx) => tx.setPlaceholder(t("field_tcgdex_set_id_ph")).setValue(this.tcgdexSetId).onChange((v) => {
+        this.tcgdexSetId = v.trim().toLowerCase();
+        if (this.editTarget) syncPokemonRefetch();
+      })
     );
+    if (this.editTarget) {
+      pokemonRefetchWarning = el.createDiv({ cls: "ncm-refetch-warning" });
+      pokemonRefetchWarning.style.display = "none";
+      pokemonRefetchWarning.setText(t("refetch_warning_pokemon"));
+    }
     catalogBtn.addEventListener("click", () => {
       this.pokemonFormType = "catalog";
       catalogBtn.addClass("ncm-type-btn-active");
@@ -2301,7 +2344,7 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
       (btn) => btn.setButtonText(this.editTarget ? t("btn_save") : t("btn_create")).setCta().onClick(() => this.editTarget ? this.savePokemon() : this.createPokemon())
     ).addButton((btn) => btn.setButtonText(t("btn_cancel")).onClick(() => this.close()));
   }
-  renderSetCatalog(el, getNameInput) {
+  renderSetCatalog(el, getNameInput, onSetSelected) {
     const searchInput = el.createEl("input", {
       cls: "ncm-set-search",
       attr: { type: "text", placeholder: t("pokemon_set_search_ph") }
@@ -2344,6 +2387,7 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
             }
             listEl.querySelectorAll(".ncm-set-item").forEach((el2) => el2.removeClass("ncm-set-item-selected"));
             item.addClass("ncm-set-item-selected");
+            onSetSelected == null ? void 0 : onSetSelected();
           });
         }
         if (this.tcgdexSetId) {
