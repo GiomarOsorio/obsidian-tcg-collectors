@@ -11,7 +11,7 @@ export interface CollectionCard {
   notes: string;
 }
 
-export type CollectionType = 'mtg-set' | 'mtg-theme';
+export type CollectionType = 'mtg-set' | 'mtg-theme' | 'pokemon-set';
 export type CollectionFormat = 'paper' | 'arena';
 
 export interface Collection {
@@ -19,6 +19,7 @@ export interface Collection {
   path: string;
   type: CollectionType;
   setCode?: string;
+  tcgdexSetId?: string;
   scryfallQuery?: string;
   scryfallOrder?: string;
   autoUpdate: boolean;
@@ -48,6 +49,7 @@ export interface CollectorsSettings {
   cardmarketAccessToken: string;
   cardmarketAccessSecret: string;
   enabledGames: Record<TCGGame, boolean>;
+  pokemonPriceSource: 'tcgplayer' | 'cardmarket';
 }
 
 export const DEFAULT_SETTINGS: CollectorsSettings = {
@@ -60,4 +62,5 @@ export const DEFAULT_SETTINGS: CollectorsSettings = {
   cardmarketAccessToken: '',
   cardmarketAccessSecret: '',
   enabledGames: { mtg: true, pokemon: true, onepiece: true, yugioh: true },
+  pokemonPriceSource: 'tcgplayer',
 };

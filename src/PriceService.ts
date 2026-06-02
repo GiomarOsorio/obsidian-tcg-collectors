@@ -1,6 +1,7 @@
-import { requestUrl } from 'obsidian';
+import { requestUrl, Vault } from 'obsidian';
 import type { CollectorsSettings, PriceSource } from './types';
 import { fetchScryfallData, getScryfallData, isScryfallCached } from './ScryfallService';
+import { fetchPokemonCard, getTCGPlayerPrice, getCardmarketPrice } from './TCGDexService';
 
 export interface PriceEntry {
   normal: number | null;
@@ -14,20 +15,44 @@ function cacheKey(set: string, number: string): string {
   return `${set.toLowerCase()}#${number}`;
 }
 
+// ── Pokémon price cache ────────────────────────────────────────────────────────
+
+const POKEMON_CACHE_PATH = '.obsidian/plugins/collectors-plugin/pokemon-price-cache.json';
+const POKEMON_SUFFIXES = ['_n', '_r', '_h', '_fe'] as const;
+const TTL_MS = 24 * 60 * 60 * 1000;
+
+interface PokemonCacheEntry {
+  price: number | null;
+  fetchedAt: number;
+  source: string;
+}
+
+// In-memory pokemon cache: key = "{setId}#{localId}_{suffix}"
+const pokemonCache = new Map<string, number | null>();
+
 // ── PriceService ──────────────────────────────────────────────────────────────
 
 export class PriceService {
   private settings: CollectorsSettings;
+  private vault: Vault | null = null;
 
   constructor(settings: CollectorsSettings) {
     this.settings = settings;
   }
 
+  setVault(vault: Vault): void {
+    this.vault = vault;
+  }
+
   updateSettings(settings: CollectorsSettings) {
     const prevSource = this.effectiveSource();
+    const prevPokemonSource = this.settings.pokemonPriceSource;
     this.settings = settings;
     if (this.effectiveSource() !== prevSource) {
       providerCache.clear();
+    }
+    if (this.settings.pokemonPriceSource !== prevPokemonSource) {
+      pokemonCache.clear();
     }
   }
 
@@ -103,6 +128,89 @@ export class PriceService {
     } else if (src === 'cardmarket') {
       await this.fetchCardmarketPrices(identifiers);
     }
+  }
+
+  // ── Pokémon price methods ──────────────────────────────────────────────────
+
+  pokemonCurrency(): string {
+    return this.settings.pokemonPriceSource === 'cardmarket' ? '€' : '$';
+  }
+
+  pokemonSourceLabel(): string {
+    return this.settings.pokemonPriceSource === 'cardmarket'
+      ? 'Cardmarket · EUR'
+      : 'TCGPlayer · USD';
+  }
+
+  isPokemonCached(setId: string, localId: string): boolean {
+    const base = `${setId.toLowerCase()}#${localId}`;
+    return POKEMON_SUFFIXES.some(s => pokemonCache.has(`${base}${s}`));
+  }
+
+  getPokemonPrice(setId: string, localId: string, suffix: string): number | null | undefined {
+    const key = `${setId.toLowerCase()}#${localId}${suffix}`;
+    if (!pokemonCache.has(key)) return undefined;
+    return pokemonCache.get(key) ?? null;
+  }
+
+  async fetchPokemonPrices(cardIds: string[]): Promise<void> {
+    // Deduplicate: strip suffix to get base card IDs like "swsh1-1"
+    const baseIds = [...new Set(cardIds.map(id => id.replace(/_[nrhf]e?$/, '')))];
+    const uncached = baseIds.filter(id => {
+      const parts = id.match(/^(.+)-([^-]+)$/);
+      if (!parts) return false;
+      return !this.isPokemonCached(parts[1], parts[2]);
+    });
+    if (uncached.length === 0) return;
+
+    const source = this.settings.pokemonPriceSource;
+    const now = Date.now();
+
+    for (const baseId of uncached) {
+      const card = await fetchPokemonCard(baseId);
+      if (!card) continue;
+
+      const setId = card.set.id.toLowerCase();
+      const localId = card.localId;
+
+      for (const suffix of POKEMON_SUFFIXES) {
+        const price = source === 'cardmarket'
+          ? getCardmarketPrice(card, suffix)
+          : getTCGPlayerPrice(card, suffix);
+        const key = `${setId}#${localId}${suffix}`;
+        pokemonCache.set(key, price);
+      }
+    }
+
+    this.savePokemonCache(source, now).catch(() => { /* non-critical */ });
+  }
+
+  async loadPokemonCache(): Promise<void> {
+    if (!this.vault) return;
+    try {
+      const exists = await this.vault.adapter.exists(POKEMON_CACHE_PATH);
+      if (!exists) return;
+      const raw = await this.vault.adapter.read(POKEMON_CACHE_PATH);
+      const data: Record<string, PokemonCacheEntry> = JSON.parse(raw);
+      const now = Date.now();
+      const src = this.settings.pokemonPriceSource;
+      for (const [key, entry] of Object.entries(data)) {
+        if (entry.source !== src) continue;
+        if (now - entry.fetchedAt > TTL_MS) continue;
+        pokemonCache.set(key, entry.price);
+      }
+    } catch {
+      // corrupt or missing cache — start fresh
+    }
+  }
+
+  private async savePokemonCache(source: string, fetchedAt: number): Promise<void> {
+    if (!this.vault) return;
+    const data: Record<string, PokemonCacheEntry> = {};
+    for (const [key, price] of pokemonCache) {
+      data[key] = { price, fetchedAt, source };
+    }
+    await this.vault.adapter.write(POKEMON_CACHE_PATH, JSON.stringify(data));
   }
 
   // ── Effective source (respects fallback rules) ─────────────────────────────

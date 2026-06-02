@@ -1,6 +1,6 @@
 import { ItemView, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import type CollectorsPlugin from './main';
-import { Collection, CollectionCard, CollectionType } from './types';
+import { Collection, CollectionType } from './types';
 import { parseCollectionFile, appendCards, patchFrontmatter } from './parser';
 import { migrateCollection } from './migrations';
 import { NewCollectionModal } from './NewCollectionModal';
@@ -67,35 +67,50 @@ export class DashboardView extends ItemView {
 
   // ── Price helpers ─────────────────────────────────────────────────────────────
 
-  private cardPrice(card: CollectionCard): number | null | undefined {
-    return this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith('_f'));
+  private fmt(val: number, coll?: Collection): string {
+    const symbol = coll?.type === 'pokemon-set'
+      ? this.plugin.priceService.pokemonCurrency()
+      : this.plugin.priceService.currency();
+    return `${symbol}${val.toFixed(2)}`;
   }
 
-  private fmt(val: number): string {
-    return `${this.plugin.priceService.currency()}${val.toFixed(2)}`;
-  }
-
-  private collValues(cards: CollectionCard[]): { owned: number; missing: number; loaded: boolean } {
+  private collValues(coll: Collection): { owned: number; missing: number; loaded: boolean } {
     let owned = 0, missing = 0, loaded = false;
-    for (const card of cards) {
-      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
-      loaded = true;
-      const p = this.cardPrice(card);
-      if (typeof p === 'number') {
-        if (card.owned) owned += p;
-        else missing += p;
+    const isPokemon = coll.type === 'pokemon-set';
+    for (const card of coll.cards) {
+      if (isPokemon) {
+        if (!this.plugin.priceService.isPokemonCached(card.set, card.number)) continue;
+        loaded = true;
+        const m = card.id.match(/_([nrhf]e?)$/);
+        const suffix = m ? `_${m[1]}` : '_n';
+        const p = this.plugin.priceService.getPokemonPrice(card.set, card.number, suffix);
+        if (typeof p === 'number') { if (card.owned) owned += p; else missing += p; }
+      } else {
+        if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
+        loaded = true;
+        const p = this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith('_f'));
+        if (typeof p === 'number') { if (card.owned) owned += p; else missing += p; }
       }
     }
     return { owned, missing, loaded };
   }
 
   private async prefetchAllPrices() {
-    const ids = this.collections
-      .filter(c => c.format !== 'arena')
+    // MTG: batch fetch via Scryfall
+    const mtgIds = this.collections
+      .filter(c => c.type.startsWith('mtg') && c.format !== 'arena')
       .flatMap(c => c.cards.map(card => ({ set: card.set.toLowerCase(), collector_number: card.number })));
-    const needed = ids.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
-    if (needed.length === 0) return;
-    await this.plugin.priceService.fetchPrices(ids);
+    const mtgNeeded = mtgIds.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
+    if (mtgNeeded.length > 0) await this.plugin.priceService.fetchPrices(mtgIds);
+
+    // Pokémon: per-card via TCGdex
+    const pokemonColls = this.collections.filter(c => c.type === 'pokemon-set');
+    for (const coll of pokemonColls) {
+      const anyUncached = coll.cards.some(card => !this.plugin.priceService.isPokemonCached(card.set, card.number));
+      if (!anyUncached) continue;
+      await this.plugin.priceService.fetchPokemonPrices(coll.cards.map(c => c.id));
+    }
+
     this.render();
   }
 
@@ -103,7 +118,7 @@ export class DashboardView extends ItemView {
 
   private runAutoUpdates() {
     const targets = this.collections.filter(
-      c => c.autoUpdate && (c.setCode || c.scryfallQuery)
+      c => c.type === 'mtg-theme' && c.autoUpdate && (c.setCode || c.scryfallQuery)
     );
     for (const coll of targets) {
       this.updateFromScryfall(coll, true).then(added => {
@@ -165,10 +180,11 @@ export class DashboardView extends ItemView {
     this.renderHeroStats(root);
 
     const grouped = this.groupByType(this.collections);
-    const order: CollectionType[] = ['mtg-set', 'mtg-theme'];
+    const order: CollectionType[] = ['mtg-set', 'mtg-theme', 'pokemon-set'];
     const labels: Record<CollectionType, string> = {
-      'mtg-set':   t('group_mtg_sets'),
-      'mtg-theme': t('group_theme'),
+      'mtg-set':     t('group_mtg_sets'),
+      'mtg-theme':   t('group_theme'),
+      'pokemon-set': t('group_pokemon_sets'),
     };
 
     for (const type of order) {
@@ -197,27 +213,30 @@ export class DashboardView extends ItemView {
   }
 
   private renderHeroStats(root: HTMLElement) {
-    const allCards = this.collections.flatMap(c => c.cards);
     const totalOwned = this.collections.reduce((s, c) => s + c.owned, 0);
     const totalCards = this.collections.reduce((s, c) => s + c.total, 0);
 
     let totalInvested = 0, totalMissing = 0, pricesLoaded = false;
-    for (const card of allCards) {
-      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
-      pricesLoaded = true;
-      const p = this.cardPrice(card);
-      if (typeof p === 'number') {
-        if (card.owned) totalInvested += p;
-        else totalMissing += p;
-      }
+    for (const coll of this.collections) {
+      if (coll.format === 'arena') continue;
+      const { owned, missing, loaded } = this.collValues(coll);
+      if (loaded) { pricesLoaded = true; totalInvested += owned; totalMissing += missing; }
     }
 
-    const hero = root.createDiv({ cls: 'col-hero' });
+    const hasMTG = this.collections.some(c => c.type.startsWith('mtg'));
+    const currency = hasMTG
+      ? this.plugin.priceService.currency()
+      : this.plugin.priceService.pokemonCurrency();
+    const sourceLabel = hasMTG
+      ? this.plugin.priceService.sourceLabel()
+      : this.plugin.priceService.pokemonSourceLabel();
+    const fmt = (v: number) => `${currency}${v.toFixed(2)}`;
 
+    const hero = root.createDiv({ cls: 'col-hero' });
     this.statBox(hero, String(this.collections.length), t('stat_collections'), '');
     this.statBox(hero, `${totalOwned} / ${totalCards}`, t('stat_cards_owned'), 'col-hero-owned');
-    this.statBox(hero, pricesLoaded ? this.fmt(totalInvested) : '…', t('stat_invested', { source: this.plugin.priceService.sourceLabel() }), 'col-hero-money');
-    this.statBox(hero, pricesLoaded ? this.fmt(totalMissing) : '…', t('stat_to_complete'), 'col-hero-missing');
+    this.statBox(hero, pricesLoaded ? fmt(totalInvested) : '…', t('stat_invested', { source: sourceLabel }), 'col-hero-money');
+    this.statBox(hero, pricesLoaded ? fmt(totalMissing) : '…', t('stat_to_complete'), 'col-hero-missing');
   }
 
   private statBox(container: HTMLElement, value: string, label: string, mod: string) {
@@ -229,7 +248,7 @@ export class DashboardView extends ItemView {
   private renderCollectionCard(container: HTMLElement, coll: Collection) {
     const pct = coll.total > 0 ? Math.round((coll.owned / coll.total) * 100) : 0;
     const missing = coll.total - coll.owned;
-    const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll.cards);
+    const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll);
 
     const card = container.createDiv({ cls: 'col-card' });
 
@@ -268,10 +287,10 @@ export class DashboardView extends ItemView {
 
     if (pricesLoaded) {
       const priceRow = info.createDiv({ cls: 'col-price-row' });
-      priceRow.createEl('span', { cls: 'col-price-invested', text: t('card_invested', { value: this.fmt(ownedVal) }) });
+      priceRow.createEl('span', { cls: 'col-price-invested', text: t('card_invested', { value: this.fmt(ownedVal, coll) }) });
       if (missingVal > 0) {
         priceRow.createEl('span', { cls: 'col-dot', text: '·' });
-        priceRow.createEl('span', { cls: 'col-price-missing', text: t('card_to_complete', { value: this.fmt(missingVal) }) });
+        priceRow.createEl('span', { cls: 'col-price-missing', text: t('card_to_complete', { value: this.fmt(missingVal, coll) }) });
       }
     }
 
@@ -284,7 +303,7 @@ export class DashboardView extends ItemView {
       if (file instanceof TFile) this.app.workspace.getLeaf('tab').openFile(file);
     });
 
-    if (coll.setCode || coll.scryfallQuery) {
+    if ((coll.setCode || coll.scryfallQuery) && coll.type.startsWith('mtg')) {
       const updateBtn = cardActions.createEl('button', { cls: 'col-btn-icon', attr: { title: t('btn_update_scryfall') } });
       updateBtn.innerHTML = '⟳';
       updateBtn.addEventListener('click', async () => {

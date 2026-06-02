@@ -24,6 +24,8 @@ export default class CollectorsPlugin extends Plugin {
 
     await this.loadSettings();
     this.priceService = new PriceService(this.settings);
+    this.priceService.setVault(this.app.vault);
+    await this.priceService.loadPokemonCache();
 
     this.registerView(DASHBOARD_VIEW_TYPE, leaf => new DashboardView(leaf, this));
     this.registerView(COLLECTION_VIEW_TYPE, leaf => new CollectionView(leaf, this));

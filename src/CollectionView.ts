@@ -13,8 +13,16 @@ import { t } from './i18n';
 
 export const COLLECTION_VIEW_TYPE = 'collection-detail';
 
+export function getCardVariant(card: CollectionCard): 'foil' | 'nonfoil' | 'reverse' | 'holo' | 'firstEdition' {
+  if (card.id.endsWith('_f'))  return 'foil';
+  if (card.id.endsWith('_r'))  return 'reverse';
+  if (card.id.endsWith('_h'))  return 'holo';
+  if (card.id.endsWith('_fe')) return 'firstEdition';
+  return 'nonfoil';
+}
+
 type Filter = 'all' | 'owned' | 'missing';
-type FinishFilter = 'all' | 'foil' | 'nonfoil';
+type FinishFilter = 'all' | 'foil' | 'nonfoil' | 'reverse' | 'holo' | 'firstEdition';
 
 export class CollectionView extends FileView {
   plugin: CollectorsPlugin;
@@ -38,19 +46,8 @@ export class CollectionView extends FileView {
   async onLoadFile(file: TFile) {
     this.collection = await parseCollectionFile(file, this.app.vault);
     this.render();
-
     if (this.collection && this.collection.format !== 'arena') {
-      const ids = this.collection.cards.map(c => ({
-        set: c.set.toLowerCase(),
-        collector_number: c.number,
-      }));
-      const needed = ids.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
-      if (needed.length > 0) {
-        this.showLoading(t('loading_prices'));
-        await this.plugin.priceService.fetchPrices(ids, s => this.showLoading(t('loading_rate_limited', { seconds: s })));
-        this.hideLoading();
-        this.render();
-      }
+      await this.fetchPricesForCollection(this.collection);
     }
   }
 
@@ -64,14 +61,26 @@ export class CollectionView extends FileView {
     this.collection = await parseCollectionFile(this.file, this.app.vault);
     this.render();
     if (this.collection && this.collection.format !== 'arena') {
-      const ids = this.collection.cards.map(c => ({ set: c.set.toLowerCase(), collector_number: c.number }));
+      await this.fetchPricesForCollection(this.collection);
+    }
+  }
+
+  private async fetchPricesForCollection(coll: Collection): Promise<void> {
+    if (coll.type === 'pokemon-set') {
+      const anyUncached = coll.cards.some(card => !this.plugin.priceService.isPokemonCached(card.set, card.number));
+      if (!anyUncached) return;
+      this.showLoading(t('loading_prices'));
+      await this.plugin.priceService.fetchPokemonPrices(coll.cards.map(c => c.id));
+      this.hideLoading();
+      this.render();
+    } else {
+      const ids = coll.cards.map(c => ({ set: c.set.toLowerCase(), collector_number: c.number }));
       const needed = ids.filter(id => !this.plugin.priceService.isCached(id.set, id.collector_number));
-      if (needed.length > 0) {
-        this.showLoading(t('loading_prices'));
-        await this.plugin.priceService.fetchPrices(ids, s => this.showLoading(t('loading_rate_limited', { seconds: s })));
-        this.hideLoading();
-        this.render();
-      }
+      if (needed.length === 0) return;
+      this.showLoading(t('loading_prices'));
+      await this.plugin.priceService.fetchPrices(ids, s => this.showLoading(t('loading_rate_limited', { seconds: s })));
+      this.hideLoading();
+      this.render();
     }
   }
 
@@ -89,21 +98,37 @@ export class CollectionView extends FileView {
   // ── Price helpers ────────────────────────────────────────────────────────────
 
   private cardPrice(card: CollectionCard): number | null | undefined {
+    if (this.collection?.type === 'pokemon-set') {
+      const m = card.id.match(/_([nrhf]e?)$/);
+      const suffix = m ? `_${m[1]}` : '_n';
+      return this.plugin.priceService.getPokemonPrice(card.set, card.number, suffix);
+    }
     return this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith('_f'));
   }
 
   private fmt(val: number): string {
-    return `${this.plugin.priceService.currency()}${val.toFixed(2)}`;
+    const symbol = this.collection?.type === 'pokemon-set'
+      ? this.plugin.priceService.pokemonCurrency()
+      : this.plugin.priceService.currency();
+    return `${symbol}${val.toFixed(2)}`;
   }
 
-  private collValues(cards: CollectionCard[]): { owned: number; missing: number; loaded: boolean } {
+  private collValues(coll: Collection): { owned: number; missing: number; loaded: boolean } {
     let owned = 0, missing = 0, loaded = false;
-    for (const card of cards) {
-      if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
-      loaded = true;
-      const p = this.cardPrice(card);
-      if (typeof p === 'number') {
-        if (card.owned) owned += p; else missing += p;
+    const isPokemon = coll.type === 'pokemon-set';
+    for (const card of coll.cards) {
+      if (isPokemon) {
+        if (!this.plugin.priceService.isPokemonCached(card.set, card.number)) continue;
+        loaded = true;
+        const m = card.id.match(/_([nrhf]e?)$/);
+        const suffix = m ? `_${m[1]}` : '_n';
+        const p = this.plugin.priceService.getPokemonPrice(card.set, card.number, suffix);
+        if (typeof p === 'number') { if (card.owned) owned += p; else missing += p; }
+      } else {
+        if (!this.plugin.priceService.isCached(card.set.toLowerCase(), card.number)) continue;
+        loaded = true;
+        const p = this.plugin.priceService.getPrice(card.set.toLowerCase(), card.number, card.id.endsWith('_f'));
+        if (typeof p === 'number') { if (card.owned) owned += p; else missing += p; }
       }
     }
     return { owned, missing, loaded };
@@ -126,7 +151,7 @@ export class CollectionView extends FileView {
 
     const headerActions = header.createDiv({ cls: 'col-actions' });
 
-    if (coll.setCode || coll.scryfallQuery) {
+    if ((coll.setCode || coll.scryfallQuery) && coll.type.startsWith('mtg')) {
       const updateBtn = headerActions.createEl('button', { cls: 'col-btn-icon', attr: { title: t('btn_update_scryfall') } });
       updateBtn.innerHTML = '⟳';
       updateBtn.addEventListener('click', async () => {
@@ -170,24 +195,47 @@ export class CollectionView extends FileView {
       missing: t('filter_missing'),
     };
 
-    const hasFoil    = coll.cards.some(c => c.id.endsWith('_f'));
-    const hasNonFoil = coll.cards.some(c => c.id.endsWith('_n'));
-    if (hasFoil && hasNonFoil) {
-      const finishWrap = row2.createDiv({ cls: 'col-finish-wrap' });
-      for (const fo of [
-        { value: 'foil'    as FinishFilter, label: t('finish_foil') },
-        { value: 'nonfoil' as FinishFilter, label: t('finish_normal') },
-      ]) {
-        const lbl = finishWrap.createEl('label', { cls: 'col-finish-label' });
-        const cb = lbl.createEl('input', { attr: { type: 'checkbox' } }) as HTMLInputElement;
-        cb.checked = this.finishFilter === fo.value || this.finishFilter === 'all';
-        lbl.createEl('span', { text: fo.label });
-        cb.addEventListener('change', () => {
-          const inputs = finishWrap.querySelectorAll<HTMLInputElement>('input');
-          const f = inputs[0].checked, n = inputs[1].checked;
-          this.finishFilter = f && n ? 'all' : f ? 'foil' : n ? 'nonfoil' : 'all';
+    if (coll.type === 'pokemon-set') {
+      const pokemonVariants: Array<{ value: FinishFilter; label: string }> = [
+        { value: 'all',          label: t('filter_all') },
+        { value: 'nonfoil',      label: t('variant_normal') },
+        { value: 'reverse',      label: t('variant_reverse_holo') },
+        { value: 'holo',         label: t('variant_holo') },
+        { value: 'firstEdition', label: t('variant_first_edition') },
+      ];
+      const variantWrap = row2.createDiv({ cls: 'col-finish-wrap col-variant-wrap' });
+      for (const v of pokemonVariants) {
+        const btn = variantWrap.createEl('button', {
+          cls: `col-finish-btn${this.finishFilter === v.value ? ' col-finish-btn-active' : ''}`,
+          text: v.label,
+        });
+        btn.addEventListener('click', () => {
+          this.finishFilter = v.value;
+          variantWrap.querySelectorAll('.col-finish-btn').forEach(b => b.removeClass('col-finish-btn-active'));
+          btn.addClass('col-finish-btn-active');
           this.renderCards(grid, coll);
         });
+      }
+    } else {
+      const hasFoil    = coll.cards.some(c => c.id.endsWith('_f'));
+      const hasNonFoil = coll.cards.some(c => c.id.endsWith('_n'));
+      if (hasFoil && hasNonFoil) {
+        const finishWrap = row2.createDiv({ cls: 'col-finish-wrap' });
+        for (const fo of [
+          { value: 'foil'    as FinishFilter, label: t('finish_foil') },
+          { value: 'nonfoil' as FinishFilter, label: t('finish_normal') },
+        ]) {
+          const lbl = finishWrap.createEl('label', { cls: 'col-finish-label' });
+          const cb = lbl.createEl('input', { attr: { type: 'checkbox' } }) as HTMLInputElement;
+          cb.checked = this.finishFilter === fo.value || this.finishFilter === 'all';
+          lbl.createEl('span', { text: fo.label });
+          cb.addEventListener('change', () => {
+            const inputs = finishWrap.querySelectorAll<HTMLInputElement>('input');
+            const f = inputs[0].checked, n = inputs[1].checked;
+            this.finishFilter = f && n ? 'all' : f ? 'foil' : n ? 'nonfoil' : 'all';
+            this.renderCards(grid, coll);
+          });
+        }
       }
     }
 
@@ -237,7 +285,7 @@ export class CollectionView extends FileView {
 
   private renderDetailHero(root: HTMLElement, coll: Collection) {
     const pct = coll.total > 0 ? Math.round((coll.owned / coll.total) * 100) : 0;
-    const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll.cards);
+    const { owned: ownedVal, missing: missingVal, loaded: pricesLoaded } = this.collValues(coll);
 
     const hero = root.createDiv({ cls: 'col-detail-hero' });
     this.statBox(hero, `${coll.owned} / ${coll.total}`, t('stat_cards_owned'), 'col-hero-owned');
@@ -249,7 +297,10 @@ export class CollectionView extends FileView {
     progBox.createEl('span', { cls: 'col-hero-value col-hero-pct', text: `${pct}%` });
 
     if (pricesLoaded) {
-      this.statBox(hero, this.fmt(ownedVal), t('stat_invested', { source: this.plugin.priceService.sourceLabel() }), 'col-hero-money');
+      const srcLabel = coll.type === 'pokemon-set'
+        ? this.plugin.priceService.pokemonSourceLabel()
+        : this.plugin.priceService.sourceLabel();
+      this.statBox(hero, this.fmt(ownedVal), t('stat_invested', { source: srcLabel }), 'col-hero-money');
       this.statBox(hero, this.fmt(missingVal), t('stat_to_complete'), 'col-hero-missing');
     }
   }
@@ -260,9 +311,7 @@ export class CollectionView extends FileView {
     const filtered = coll.cards.filter(card => {
       if (this.filter === 'owned'   &&  !card.owned) return false;
       if (this.filter === 'missing' &&   card.owned) return false;
-      const isFoil = card.id.endsWith('_f');
-      if (this.finishFilter === 'foil'    && !isFoil) return false;
-      if (this.finishFilter === 'nonfoil' &&  isFoil) return false;
+      if (this.finishFilter !== 'all' && getCardVariant(card) !== this.finishFilter) return false;
       if (this.searchQuery) return card.name.toLowerCase().includes(this.searchQuery.toLowerCase());
       return true;
     });
@@ -311,11 +360,18 @@ export class CollectionView extends FileView {
   }
 
   private renderCardTile(grid: HTMLElement, card: CollectionCard, coll: Collection) {
-    const isFoil = card.id.endsWith('_f');
+    const variant = getCardVariant(card);
+    const isFoil = variant === 'foil';
     const tileCls = ['col-tile', card.owned ? 'col-tile-owned' : '', isFoil ? 'col-tile-foil' : ''].filter(Boolean).join(' ');
     const tile = grid.createDiv({ cls: tileCls });
 
-    if (isFoil) tile.createDiv({ cls: 'col-foil-badge', text: 'F' });
+    const badgeText: Partial<Record<typeof variant, string>> = {
+      foil:         'F',
+      reverse:      'R',
+      holo:         'H',
+      firstEdition: '1st',
+    };
+    if (badgeText[variant]) tile.createDiv({ cls: 'col-foil-badge', text: badgeText[variant] });
 
     if (card.imageUrl) {
       const imgWrap = tile.createDiv({ cls: 'col-tile-img-wrap' });
@@ -348,7 +404,10 @@ export class CollectionView extends FileView {
       priceEl.textContent = t('price_digital');
       priceEl.addClass('col-tile-price-empty');
     } else {
-      const isCached = this.plugin.priceService.isCached(card.set.toLowerCase(), card.number);
+      const isPokemon = coll.type === 'pokemon-set';
+      const isCached = isPokemon
+        ? this.plugin.priceService.isPokemonCached(card.set, card.number)
+        : this.plugin.priceService.isCached(card.set.toLowerCase(), card.number);
       const p = isCached ? this.cardPrice(card) : undefined;
       if (typeof p === 'number') {
         priceEl.textContent = this.fmt(p);
@@ -393,7 +452,7 @@ export class CollectionView extends FileView {
   private refreshDetailHero(coll: Collection) {
     const root = this.contentEl;
     const pct = coll.total > 0 ? Math.round((coll.owned / coll.total) * 100) : 0;
-    const { owned: ov, missing: mv } = this.collValues(coll.cards);
+    const { owned: ov, missing: mv } = this.collValues(coll);
 
     const fill = root.querySelector<HTMLElement>('.col-progress-fill');
     if (fill) fill.style.width = `${pct}%`;

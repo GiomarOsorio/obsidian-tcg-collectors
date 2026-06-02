@@ -52,7 +52,7 @@ export class CollectorsSettingTab extends PluginSettingTab {
 
     this.buildGeneral(paneEls['general']!);
     this.buildMTG(paneEls['mtg']!);
-    this.buildComingSoon(paneEls['pokemon']!,  'pokemon',  '⚡', 'Pokémon');
+    this.buildPokemon(paneEls['pokemon']!);
     this.buildComingSoon(paneEls['onepiece']!, 'onepiece', '☠', 'One Piece');
     this.buildComingSoon(paneEls['yugioh']!,   'yugioh',   '👁', 'Yu-Gi-Oh!');
 
@@ -182,6 +182,50 @@ export class CollectorsSettingTab extends PluginSettingTab {
             })
         );
     }
+  }
+
+  // ── Pokémon ───────────────────────────────────────────────────────────────────
+
+  private buildPokemon(el: HTMLElement) {
+    if (!this.plugin.settings.enabledGames) {
+      this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
+    }
+
+    this.sectionTitle(el, '⚡  Pokémon');
+
+    new Setting(el)
+      .setName(t('settings_enable_game', { game: 'Pokémon' }))
+      .setDesc(t('settings_enable_game_desc'))
+      .addToggle(tx =>
+        tx.setValue(this.plugin.settings.enabledGames['pokemon'] ?? true)
+          .onChange(async v => {
+            this.plugin.settings.enabledGames['pokemon'] = v;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    this.sectionTitle(el, t('settings_section_prices'));
+    this.sectionDesc(el, t('settings_pokemon_price_source_desc'));
+
+    new Setting(el)
+      .setName(t('settings_pokemon_price_source'))
+      .addDropdown(d => {
+        d.addOption('tcgplayer',  t('settings_pokemon_tcgplayer'));
+        d.addOption('cardmarket', t('settings_pokemon_cardmarket'));
+        d.setValue(this.plugin.settings.pokemonPriceSource ?? 'tcgplayer');
+        d.onChange(async v => {
+          this.plugin.settings.pokemonPriceSource = v as 'tcgplayer' | 'cardmarket';
+          await this.plugin.saveSettings();
+        });
+      });
+
+    // TCGdex sponsor link
+    const sponsorDiv = el.createDiv({ cls: 'col-settings-sponsor' });
+    sponsorDiv.createEl('span', { text: t('settings_pokemon_sponsor_desc') + ' ' });
+    sponsorDiv.createEl('a', {
+      text: t('settings_pokemon_sponsor'),
+      href: 'https://github.com/tcgdex/cards-database#sponsors-',
+    });
   }
 
   // ── Coming soon ───────────────────────────────────────────────────────────────
