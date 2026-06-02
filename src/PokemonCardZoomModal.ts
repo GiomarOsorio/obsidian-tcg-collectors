@@ -175,9 +175,9 @@ export function openPokemonCardZoom(card: CollectionCard): void {
   };
   rafId = requestAnimationFrame(tick);
 
-  // ── Pointer tracking ─────────────────────────────────────────────────────────
-  cardEl.addEventListener('pointermove', (e: PointerEvent) => {
-    const r = cardEl.getBoundingClientRect();
+  // Pointer tracking on rotator — it has pointer-events: auto from base CSS
+  rotator.addEventListener('pointermove', (e: PointerEvent) => {
+    const r = rotator.getBoundingClientRect();
     const x = ((e.clientX - r.left) / r.width)  * 100;
     const y = ((e.clientY - r.top)  / r.height) * 100;
     tgt.rx = (x - 50) *  0.35;
@@ -191,7 +191,7 @@ export function openPokemonCardZoom(card: CollectionCard): void {
     cardEl.classList.add('interacting');
   });
 
-  cardEl.addEventListener('pointerleave', () => {
+  rotator.addEventListener('pointerleave', () => {
     Object.assign(tgt, makeState());
     cardEl.classList.remove('interacting');
   });
