@@ -166,6 +166,38 @@ export const en = {
   settings_enable_game_desc:'Show this game as an option when creating new collections.',
   settings_no_card_data:   'No card data source available for {game} yet.',
   settings_no_price_data:  'No price data available for {game} yet.',
+
+  // Collection groups — Pokémon
+  group_pokemon_sets:      'Pokémon Sets',
+
+  // Collection type label
+  type_pokemon_set:        'Pokémon Set',
+
+  // Pokemon settings tab
+  settings_pokemon_price_source:      'Price source',
+  settings_pokemon_price_source_desc: 'Prices are fetched via TCGdex. Choose currency.',
+  settings_pokemon_tcgplayer:         'TCGPlayer · USD',
+  settings_pokemon_cardmarket:        'Cardmarket · EUR',
+  settings_pokemon_sponsor:           'Powered by TCGdex (open source)',
+  settings_pokemon_sponsor_desc:      'TCGdex provides free Pokémon card data and prices. Consider sponsoring!',
+
+  // Pokémon new-collection modal
+  field_tcgdex_set_id:      'TCGdex set ID',
+  field_tcgdex_set_id_desc: 'The TCGdex set identifier. Find it at tcgdex.dev.',
+  field_tcgdex_set_id_ph:   'e.g. swsh1, sv10, base1',
+
+  // Pokémon notices
+  notice_fetching_pokemon:          'Fetching Pokémon cards for "{name}"…',
+  notice_fetching_pokemon_progress: 'Fetching {fetched}/{total} cards…',
+  notice_pokemon_added:             'Added {count} new Pokémon cards to "{name}".',
+  notice_pokemon_up_to_date:        '"{name}" is already up to date.',
+  notice_pokemon_failed:            'Pokémon fetch failed: {error}',
+
+  // Pokémon variant filter buttons
+  variant_normal:         '◇ Normal',
+  variant_reverse_holo:   '↺ Reverse Holo',
+  variant_holo:           '✦ Holo',
+  variant_first_edition:  '① 1st Edition',
 } as const;
 
 export type I18nKey = keyof typeof en;

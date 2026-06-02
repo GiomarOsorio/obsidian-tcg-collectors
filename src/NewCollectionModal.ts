@@ -2,6 +2,7 @@ import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
 import { CollectionFormat, CollectionType, type TCGGame, type Collection } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
+import { fetchPokemonSetCards, pokemonCardToMarkdownRows } from './TCGDexService';
 import { appendCards, patchFrontmatter, replaceFrontmatter, yamlStr, extractOwnedMap, clearCardRows, applyOwnedStates } from './parser';
 import { t } from './i18n';
 
@@ -47,8 +48,9 @@ const GAMES: Record<TCGGame, GameConfig> = {
 const GAME_ORDER: TCGGame[] = ['mtg', 'pokemon', 'onepiece', 'yugioh'];
 
 const TYPE_LABELS = (): Record<CollectionType, string> => ({
-  'mtg-set':   t('type_mtg_set'),
-  'mtg-theme': t('type_mtg_theme'),
+  'mtg-set':     t('type_mtg_set'),
+  'mtg-theme':   t('type_mtg_theme'),
+  'pokemon-set': t('type_pokemon_set'),
 });
 
 const TABLE_HEADER =
@@ -76,6 +78,9 @@ export class NewCollectionModal extends Modal {
   private autoUpdate = false;
   private format: CollectionFormat = 'paper';
 
+  // Pokémon form state
+  private tcgdexSetId = '';
+
   constructor(
     app: App,
     plugin: CollectorsPlugin,
@@ -98,6 +103,7 @@ export class NewCollectionModal extends Modal {
       this.scryfallOrder = c.scryfallOrder ?? 'released';
       this.autoUpdate    = c.autoUpdate;
       this.autoFetch     = false;
+      this.tcgdexSetId   = c.tcgdexSetId ?? '';
     }
   }
 
@@ -154,6 +160,8 @@ export class NewCollectionModal extends Modal {
 
     if (this.activeGame === 'mtg') {
       this.renderMTGForm(this.gameContentEl);
+    } else if (this.activeGame === 'pokemon') {
+      this.renderPokemonForm(this.gameContentEl);
     } else {
       this.renderComingSoon(this.gameContentEl, this.activeGame);
     }
@@ -286,6 +294,36 @@ export class NewCollectionModal extends Modal {
         .setButtonText(this.editTarget ? t('btn_save') : t('btn_create'))
         .setCta()
         .onClick(() => this.editTarget ? this.save() : this.create())
+      )
+      .addButton(btn => btn.setButtonText(t('btn_cancel')).onClick(() => this.close()));
+  }
+
+  // ── Pokémon form ────────────────────────────────────────────────────────────
+
+  private renderPokemonForm(el: HTMLElement) {
+    new Setting(el)
+      .setName(t('field_name'))
+      .setDesc(t('field_name_desc'))
+      .addText(tx =>
+        tx.setPlaceholder(t('field_name_placeholder'))
+          .setValue(this.name)
+          .onChange(v => (this.name = v.trim()))
+      );
+
+    new Setting(el)
+      .setName(t('field_tcgdex_set_id'))
+      .setDesc(t('field_tcgdex_set_id_desc'))
+      .addText(tx =>
+        tx.setPlaceholder(t('field_tcgdex_set_id_ph'))
+          .setValue(this.tcgdexSetId)
+          .onChange(v => (this.tcgdexSetId = v.trim().toLowerCase()))
+      );
+
+    new Setting(el)
+      .addButton(btn => btn
+        .setButtonText(this.editTarget ? t('btn_save') : t('btn_create'))
+        .setCta()
+        .onClick(() => this.editTarget ? this.savePokemon() : this.createPokemon())
       )
       .addButton(btn => btn.setButtonText(t('btn_cancel')).onClick(() => this.close()));
   }
@@ -441,6 +479,86 @@ export class NewCollectionModal extends Modal {
       await this.app.workspace.getLeaf(false).openFile(file);
     } catch (e) {
       new Notice(t('notice_create_failed', { error: (e as Error).message }));
+    }
+  }
+
+  // ── Pokémon create / save ────────────────────────────────────────────────────
+
+  private pokemonFrontmatter(): string[] {
+    return [
+      '---',
+      `cssclasses: collectors-file`,
+      `plugin-version: ${this.plugin.manifest.version}`,
+      `collection-type: pokemon-set`,
+      `collection-name: ${yamlStr(this.name)}`,
+      this.tcgdexSetId ? `tcgdex-set-id: ${this.tcgdexSetId}` : '',
+      '---',
+    ].filter(Boolean);
+  }
+
+  private async createPokemon() {
+    if (!this.name) { new Notice(t('notice_name_required')); return; }
+
+    const folder = this.plugin.settings.collectionsFolder;
+    const filename = this.name.replace(/[\\/:*?"<>|]/g, '-') + '.collection';
+    const path = normalizePath(folder ? `${folder}/${filename}` : filename);
+
+    if (this.app.vault.getAbstractFileByPath(path) instanceof TFile) {
+      new Notice(t('notice_file_exists', { path })); return;
+    }
+
+    const content = `${this.pokemonFrontmatter().join('\n')}\n\n${TABLE_HEADER}\n`;
+    try {
+      if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
+        await this.app.vault.createFolder(folder);
+      }
+      const file = await this.app.vault.create(path, content);
+      this.close();
+      if (this.tcgdexSetId) await this.fetchAndPopulatePokemon(file);
+      this.onCreated();
+      await this.app.workspace.getLeaf(false).openFile(file);
+    } catch (e) {
+      new Notice(t('notice_create_failed', { error: (e as Error).message }));
+    }
+  }
+
+  private async savePokemon() {
+    if (!this.name) { new Notice(t('notice_name_required')); return; }
+    const { file } = this.editTarget!;
+    try {
+      await replaceFrontmatter(file, this.pokemonFrontmatter(), this.app.vault);
+      new Notice(t('notice_saved'));
+      this.close();
+      if (this.autoFetch && this.tcgdexSetId) {
+        const content = await this.app.vault.read(file);
+        const previousOwned = extractOwnedMap(content);
+        await this.fetchAndPopulatePokemon(file, previousOwned);
+      }
+      this.onCreated();
+    } catch (e) {
+      new Notice(t('notice_save_failed', { error: (e as Error).message }));
+    }
+  }
+
+  private async fetchAndPopulatePokemon(file: TFile, previousOwned?: Map<string, number>) {
+    new Notice(t('notice_fetching_pokemon', { name: this.name }));
+    try {
+      const cards = await fetchPokemonSetCards(
+        this.tcgdexSetId,
+        (fetched, total) => new Notice(t('notice_fetching_pokemon_progress', { fetched, total }))
+      );
+      const rawRows = cards.flatMap(pokemonCardToMarkdownRows);
+      const rows = previousOwned ? applyOwnedStates(rawRows, previousOwned) : rawRows;
+
+      if (previousOwned) {
+        await clearCardRows(file, this.app.vault);
+      }
+      const added = await appendCards(file, rows, this.app.vault);
+      const today = new Date().toISOString().slice(0, 10);
+      await patchFrontmatter(file, 'last-fetched', today, this.app.vault);
+      new Notice(t('notice_pokemon_added', { count: added, name: this.name }));
+    } catch (e) {
+      new Notice(t('notice_pokemon_failed', { error: (e as Error).message }));
     }
   }
 

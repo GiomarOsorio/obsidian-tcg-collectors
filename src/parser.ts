@@ -1,6 +1,8 @@
 import { TFile, Vault } from 'obsidian';
 import { Collection, CollectionCard, CollectionFormat, CollectionType } from './types';
 
+const SUFFIX_PATTERN = /_([nrhf]e?)$/;
+
 const CHECKBOX_PATTERN = /<input type="checkbox"/;
 
 export function yamlStr(s: string): string {
@@ -34,6 +36,7 @@ export async function parseCollectionFile(
   let lastFetched: string | undefined;
   let pluginVersion: string | undefined;
   let collectionName = file.basename;
+  let tcgdexSetId: string | undefined;
 
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (fmMatch) {
@@ -75,6 +78,9 @@ export async function parseCollectionFile(
         case 'collection-format':
           collectionFormat = val as CollectionFormat;
           break;
+        case 'tcgdex-set-id':
+          tcgdexSetId = val;
+          break;
       }
     }
   }
@@ -90,6 +96,7 @@ export async function parseCollectionFile(
     type: collectionType,
     format: collectionFormat,
     setCode,
+    tcgdexSetId,
     scryfallQuery,
     scryfallOrder,
     autoUpdate,
@@ -140,13 +147,17 @@ function parseCards(content: string): CollectionCard[] {
 }
 
 function finishSuffix(name: string, id: string): string {
-  // New-style IDs have explicit suffix
-  if (id.endsWith('_f')) return '_f';
-  if (id.endsWith('_n')) return '_n';
-  // Infer from card name for legacy cards
+  const m = id.match(SUFFIX_PATTERN);
+  if (m) return `_${m[1]}`;
+  // Infer from card name for legacy MTG cards
   if (name.includes('(Foil)')) return '_f';
   if (name.includes('(Normal)')) return '_n';
   return ''; // unknown — treat as "any finish"
+}
+
+function extractIdSuffix(id: string): string {
+  const m = id.match(SUFFIX_PATTERN);
+  return m ? `_${m[1]}` : '_n';
 }
 
 export function getExistingCardKeys(content: string): Set<string> {
@@ -317,7 +328,7 @@ export function extractOwnedMap(content: string): Map<string, number> {
     const number = cells[6].trim();
     const idMatch = checkboxCell.match(/id="([^"]+)"/);
     const id = idMatch?.[1] ?? '';
-    const suffix = id.endsWith('_f') ? '_f' : '_n';
+    const suffix = extractIdSuffix(id);
     map.set(`${set}#${number}${suffix}`, count);
   }
   return map;
@@ -338,7 +349,7 @@ export function applyOwnedStates(rows: string[], ownedMap: Map<string, number>):
     const number = cells[6].trim();
     const idMatch = cells[0].match(/id="([^"]+)"/);
     const id = idMatch?.[1] ?? '';
-    const suffix = id.endsWith('_f') ? '_f' : '_n';
+    const suffix = extractIdSuffix(id);
     const prevCount = ownedMap.get(`${set}#${number}${suffix}`);
     if (prevCount && prevCount > 0) {
       return row.replace(
