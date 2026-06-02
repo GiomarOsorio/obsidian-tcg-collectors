@@ -1278,9 +1278,8 @@
 .pkmn-zoom-modal .card {
   width: 260px;
   display: block;
-  cursor: pointer;
+  cursor: default;
   user-select: none;
-  pointer-events: auto !important;
 }
 @media (min-width: 600px) {
   .pkmn-zoom-modal .card { width: 360px; }
