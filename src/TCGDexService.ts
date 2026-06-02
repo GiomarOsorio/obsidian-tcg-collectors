@@ -2,6 +2,24 @@ import { requestUrl } from 'obsidian';
 
 const API = 'https://api.tcgdex.net/v2/en';
 
+export interface TCGDexSetBrief {
+  id: string;
+  name: string;
+  serie?: { id: string; name: string };
+  cardCount?: { total: number; official?: number };
+  releaseDate?: string;
+}
+
+let setsCache: TCGDexSetBrief[] | null = null;
+
+export async function fetchAllSets(): Promise<TCGDexSetBrief[]> {
+  if (setsCache) return setsCache;
+  const res = await requestUrl({ url: `${API}/sets`, headers: { Accept: 'application/json' } });
+  if (res.status < 200 || res.status >= 300) return [];
+  setsCache = (res.json as TCGDexSetBrief[]) ?? [];
+  return setsCache;
+}
+
 export interface TCGDexCardBrief {
   id: string;
   localId: string;

@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import type CollectorsPlugin from './main';
 import { CollectionFormat, CollectionType, type TCGGame, type Collection } from './types';
 import { fetchSetCards, fetchSearchCards, cardToMarkdownRows, parseScryfallInput } from './ScryfallService';
-import { fetchPokemonSetCards, pokemonCardToMarkdownRows } from './TCGDexService';
+import { fetchPokemonSetCards, pokemonCardToMarkdownRows, fetchAllSets, TCGDexSetBrief } from './TCGDexService';
 import { appendCards, patchFrontmatter, replaceFrontmatter, yamlStr, extractOwnedMap, clearCardRows, applyOwnedStates } from './parser';
 import { t } from './i18n';
 
@@ -80,6 +80,7 @@ export class NewCollectionModal extends Modal {
 
   // Pokémon form state
   private tcgdexSetId = '';
+  private pokemonFormType: 'catalog' | 'custom' = 'catalog';
 
   constructor(
     app: App,
@@ -301,16 +302,37 @@ export class NewCollectionModal extends Modal {
   // ── Pokémon form ────────────────────────────────────────────────────────────
 
   private renderPokemonForm(el: HTMLElement) {
+    let nameInputEl: HTMLInputElement | null = null;
+
     new Setting(el)
       .setName(t('field_name'))
       .setDesc(t('field_name_desc'))
-      .addText(tx =>
-        tx.setPlaceholder(t('field_name_placeholder'))
+      .addText(tx => {
+        tx.setPlaceholder(t('field_name_ph_pokemon'))
           .setValue(this.name)
-          .onChange(v => (this.name = v.trim()))
-      );
+          .onChange(v => (this.name = v.trim()));
+        nameInputEl = tx.inputEl;
+      });
 
-    new Setting(el)
+    // Type toggle: catalog vs custom
+    const typeWrap = el.createDiv({ cls: 'ncm-pokemon-type-toggle' });
+    const catalogBtn = typeWrap.createEl('button', {
+      cls: `ncm-type-btn${this.pokemonFormType === 'catalog' ? ' ncm-type-btn-active' : ''}`,
+      text: t('pokemon_form_type_catalog'),
+    });
+    const customBtn = typeWrap.createEl('button', {
+      cls: `ncm-type-btn${this.pokemonFormType === 'custom' ? ' ncm-type-btn-active' : ''}`,
+      text: t('pokemon_form_type_custom'),
+    });
+
+    const catalogSection = el.createDiv({ cls: 'ncm-pokemon-catalog' });
+    const customSection  = el.createDiv({ cls: 'ncm-pokemon-custom'  });
+    if (this.pokemonFormType === 'custom') catalogSection.style.display = 'none';
+    else customSection.style.display = 'none';
+
+    this.renderSetCatalog(catalogSection, () => nameInputEl);
+
+    new Setting(customSection)
       .setName(t('field_tcgdex_set_id'))
       .setDesc(t('field_tcgdex_set_id_desc'))
       .addText(tx =>
@@ -319,6 +341,21 @@ export class NewCollectionModal extends Modal {
           .onChange(v => (this.tcgdexSetId = v.trim().toLowerCase()))
       );
 
+    catalogBtn.addEventListener('click', () => {
+      this.pokemonFormType = 'catalog';
+      catalogBtn.addClass('ncm-type-btn-active');
+      customBtn.removeClass('ncm-type-btn-active');
+      catalogSection.style.display = '';
+      customSection.style.display = 'none';
+    });
+    customBtn.addEventListener('click', () => {
+      this.pokemonFormType = 'custom';
+      customBtn.addClass('ncm-type-btn-active');
+      catalogBtn.removeClass('ncm-type-btn-active');
+      customSection.style.display = '';
+      catalogSection.style.display = 'none';
+    });
+
     new Setting(el)
       .addButton(btn => btn
         .setButtonText(this.editTarget ? t('btn_save') : t('btn_create'))
@@ -326,6 +363,71 @@ export class NewCollectionModal extends Modal {
         .onClick(() => this.editTarget ? this.savePokemon() : this.createPokemon())
       )
       .addButton(btn => btn.setButtonText(t('btn_cancel')).onClick(() => this.close()));
+  }
+
+  private renderSetCatalog(el: HTMLElement, getNameInput: () => HTMLInputElement | null) {
+    const searchInput = el.createEl('input', {
+      cls: 'ncm-set-search',
+      attr: { type: 'text', placeholder: t('pokemon_set_search_ph') },
+    });
+    const listEl = el.createDiv({ cls: 'ncm-set-list' });
+    listEl.createDiv({ cls: 'ncm-set-status', text: t('pokemon_set_loading') });
+
+    fetchAllSets().then((sets: TCGDexSetBrief[]) => {
+      // Newest first
+      const sorted = [...sets].sort((a, b) => {
+        if (a.releaseDate && b.releaseDate) return b.releaseDate.localeCompare(a.releaseDate);
+        return a.name.localeCompare(b.name);
+      });
+
+      const paint = (query: string) => {
+        listEl.empty();
+        const q = query.toLowerCase();
+        const filtered = q
+          ? sorted.filter(s =>
+              s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q) ||
+              s.serie?.name.toLowerCase().includes(q))
+          : sorted;
+
+        if (filtered.length === 0) {
+          listEl.createDiv({ cls: 'ncm-set-status', text: t('pokemon_set_no_results') });
+          return;
+        }
+
+        for (const set of filtered) {
+          const isSelected = this.tcgdexSetId === set.id;
+          const item = listEl.createDiv({ cls: `ncm-set-item${isSelected ? ' ncm-set-item-selected' : ''}` });
+          item.createEl('span', { cls: 'ncm-set-name', text: set.name });
+          const meta = item.createDiv({ cls: 'ncm-set-meta' });
+          if (set.serie) meta.createEl('span', { cls: 'ncm-set-serie', text: set.serie.name });
+          meta.createEl('code', { cls: 'ncm-set-id', text: set.id });
+          if (set.cardCount?.total) {
+            meta.createEl('span', { cls: 'ncm-set-count', text: t('pokemon_set_card_count', { count: set.cardCount.total }) });
+          }
+
+          item.addEventListener('click', () => {
+            this.tcgdexSetId = set.id;
+            if (!this.name) {
+              this.name = set.name;
+              const inp = getNameInput();
+              if (inp) inp.value = set.name;
+            }
+            listEl.querySelectorAll('.ncm-set-item').forEach(el => el.removeClass('ncm-set-item-selected'));
+            item.addClass('ncm-set-item-selected');
+          });
+        }
+
+        if (this.tcgdexSetId) {
+          listEl.querySelector<HTMLElement>('.ncm-set-item-selected')?.scrollIntoView({ block: 'nearest' });
+        }
+      };
+
+      paint('');
+      searchInput.addEventListener('input', () => paint(searchInput.value));
+    }).catch(() => {
+      listEl.empty();
+      listEl.createDiv({ cls: 'ncm-set-status', text: t('pokemon_set_load_failed') });
+    });
   }
 
   // ── Coming soon ─────────────────────────────────────────────────────────────
