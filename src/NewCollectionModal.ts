@@ -47,10 +47,9 @@ const GAMES: Record<TCGGame, GameConfig> = {
 
 const GAME_ORDER: TCGGame[] = ['mtg', 'pokemon', 'onepiece', 'yugioh'];
 
-const TYPE_LABELS = (): Record<CollectionType, string> => ({
-  'mtg-set':     t('type_mtg_set'),
-  'mtg-theme':   t('type_mtg_theme'),
-  'pokemon-set': t('type_pokemon_set'),
+const MTG_TYPE_LABELS = (): Partial<Record<CollectionType, string>> => ({
+  'mtg-set':   t('type_mtg_set'),
+  'mtg-theme': t('type_mtg_theme'),
 });
 
 const TABLE_HEADER =
@@ -294,7 +293,7 @@ export class NewCollectionModal extends Modal {
     new Setting(el)
       .setName(t('field_type'))
       .addDropdown(d => {
-        for (const [val, label] of Object.entries(TYPE_LABELS())) {
+        for (const [val, label] of Object.entries(MTG_TYPE_LABELS())) {
           d.addOption(val, label);
         }
         d.setValue(this.type);

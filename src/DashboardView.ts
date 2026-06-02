@@ -269,6 +269,7 @@ export class DashboardView extends ItemView {
     const nameRow = info.createDiv({ cls: 'col-card-name-row' });
     nameRow.createEl('span', { cls: 'col-card-name', text: coll.name });
     if (coll.setCode) nameRow.createEl('span', { cls: 'col-badge', text: coll.setCode });
+    if (coll.tcgdexSetId) nameRow.createEl('span', { cls: 'col-badge', text: coll.tcgdexSetId });
     if (coll.format === 'arena') nameRow.createEl('span', { cls: 'col-badge col-badge-arena', text: t('badge_arena') });
 
     const progressWrap = info.createDiv({ cls: 'col-progress-wrap' });

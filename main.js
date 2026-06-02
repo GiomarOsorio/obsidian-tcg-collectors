@@ -757,7 +757,7 @@ var en = {
   field_auto_update_desc: "Check for new cards on Scryfall every time the dashboard opens. Ideal for theme collections.",
   field_type: "Type",
   type_mtg_set: "MTG Set / Product",
-  type_mtg_theme: "MTG Theme Collection",
+  type_mtg_theme: "Custom",
   field_format: "Format",
   field_format_desc: "Physical cards or MTG Arena digital.",
   format_paper: "\u{1F0CF} Paper",
@@ -2096,10 +2096,9 @@ var GAMES = {
   }
 };
 var GAME_ORDER = ["mtg", "pokemon", "onepiece", "yugioh"];
-var TYPE_LABELS = () => ({
+var MTG_TYPE_LABELS = () => ({
   "mtg-set": t("type_mtg_set"),
-  "mtg-theme": t("type_mtg_theme"),
-  "pokemon-set": t("type_pokemon_set")
+  "mtg-theme": t("type_mtg_theme")
 });
 var TABLE_HEADER = "| Owned | Image | Name | Type | Rarity | Set | Number | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- |";
 var NewCollectionModal = class extends import_obsidian4.Modal {
@@ -2266,7 +2265,7 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
     const autoUpdateSetting = new import_obsidian4.Setting(el).setName(t("field_auto_update")).setDesc(t("field_auto_update_desc")).addToggle((tx) => tx.setValue(this.autoUpdate).onChange((v) => this.autoUpdate = v));
     autoUpdateSetting.settingEl.style.display = "none";
     new import_obsidian4.Setting(el).setName(t("field_type")).addDropdown((d) => {
-      for (const [val, label] of Object.entries(TYPE_LABELS())) {
+      for (const [val, label] of Object.entries(MTG_TYPE_LABELS())) {
         d.addOption(val, label);
       }
       d.setValue(this.type);
@@ -2922,6 +2921,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     const nameRow = info.createDiv({ cls: "col-card-name-row" });
     nameRow.createEl("span", { cls: "col-card-name", text: coll.name });
     if (coll.setCode) nameRow.createEl("span", { cls: "col-badge", text: coll.setCode });
+    if (coll.tcgdexSetId) nameRow.createEl("span", { cls: "col-badge", text: coll.tcgdexSetId });
     if (coll.format === "arena") nameRow.createEl("span", { cls: "col-badge col-badge-arena", text: t("badge_arena") });
     const progressWrap = info.createDiv({ cls: "col-progress-wrap" });
     const bar = progressWrap.createDiv({ cls: "col-progress-bar" });
