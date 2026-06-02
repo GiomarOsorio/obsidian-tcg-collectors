@@ -386,7 +386,7 @@ export class CollectionView extends FileView {
       });
       tile.addEventListener('click', () => {
         if (coll.type === 'pokemon-set') {
-          openPokemonCardZoom(this.app, card);
+          openPokemonCardZoom(card);
         } else {
           openCardZoom(card.imageUrl, card.name, isFoil);
         }

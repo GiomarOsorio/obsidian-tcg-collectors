@@ -1,13 +1,9 @@
-import { App, Modal } from 'obsidian';
 import type { CollectionCard } from './types';
 
-// Card back image from official Pokemon TCG assets
 const BACK_URL = 'https://tcg.pokemon.com/assets/img/global/tcg-card-back-2x.jpg';
+const CDN      = 'https://poke-holo.b-cdn.net';
 
-// CDN for per-card foil textures (pokemon-cards-151 by @simeydotme)
-const CDN = 'https://poke-holo.b-cdn.net';
-
-// ── Data mapping helpers ───────────────────────────────────────────────────────
+// ── Data mapping ───────────────────────────────────────────────────────────────
 
 function getCardSuffix(id: string): string {
   const m = id.match(/_([nrhf]e?)$/);
@@ -15,7 +11,6 @@ function getCardSuffix(id: string): string {
 }
 
 function mapRarity(rarity: string | undefined, suffix: string): string {
-  // Reverse holo variant always gets the pokeball holo effect
   if (suffix === '_r') return 'pokeball holo';
   const r = (rarity ?? '').toLowerCase().trim();
   if (r.includes('hyper rare'))                return 'hyper rare';
@@ -44,164 +39,174 @@ function getTypeClasses(typeStr: string): string {
 }
 
 function getFoilUrl(setId: string, localId: string, suffix: string): string | null {
-  // Normal cards don't need a foil texture
   if (suffix === '_n') return null;
-  // ph = pinched holo (reverse), std = standard holo
   const foilSuffix = suffix === '_r' ? 'ph' : 'std';
-  // Normalize set ID for CDN path (sv3pt5 → sv3-5)
+  // Normalize set ID: sv3pt5 → sv3-5 (CDN path convention)
   const cdnSetId = setId.replace(/([a-z])pt(\d)/g, '$1-$2');
   const num = parseInt(localId);
   const paddedNum = isNaN(num) ? localId : num.toString().padStart(3, '0');
   return `${CDN}/foils/${cdnSetId}_en_${paddedNum}_${foilSuffix}.foil.webp`;
 }
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
+// ── Animation state ────────────────────────────────────────────────────────────
 
-export function openPokemonCardZoom(app: App, card: CollectionCard): void {
-  new PokemonCardZoomModal(app, card).open();
+interface AnimState { rx: number; ry: number; px: number; py: number; op: number; bx: number; by: number; }
+
+function makeState(): AnimState {
+  return { rx: 0, ry: 0, px: 50, py: 50, op: 0, bx: 50, by: 50 };
 }
 
-class PokemonCardZoomModal extends Modal {
-  private card: CollectionCard;
-  private cardEl: HTMLElement | null = null;
-  private rafId = 0;
+function applyVars(el: HTMLElement, v: AnimState): void {
+  const dx = (v.px - 50) / 50, dy = (v.py - 50) / 50;
+  const dist = Math.min(Math.sqrt(dx * dx + dy * dy), 1);
+  el.style.setProperty('--rotate-x',           `${v.rx}deg`);
+  el.style.setProperty('--rotate-y',           `${v.ry}deg`);
+  el.style.setProperty('--pointer-x',          `${v.px}%`);
+  el.style.setProperty('--pointer-y',          `${v.py}%`);
+  el.style.setProperty('--card-opacity',       `${v.op}`);
+  el.style.setProperty('--background-x',       `${v.bx}%`);
+  el.style.setProperty('--background-y',       `${v.by}%`);
+  el.style.setProperty('--pointer-from-center', `${dist}`);
+  el.style.setProperty('--pointer-from-top',   `${v.py / 100}`);
+  el.style.setProperty('--pointer-from-left',  `${v.px / 100}`);
+  el.style.setProperty('--card-scale',         '1');
+  el.style.setProperty('--translate-x',        '0px');
+  el.style.setProperty('--translate-y',        '0px');
+  el.style.setProperty('--rotate-delta',       '0');
+  el.style.setProperty('--seedx',              '0.5');
+  el.style.setProperty('--seedy',              '0.5');
+}
 
-  // Lerped current values
-  private cur = { rx: 0, ry: 0, px: 50, py: 50, op: 0, bx: 50, by: 50 };
-  // Target values driven by pointer
-  private tgt = { rx: 0, ry: 0, px: 50, py: 50, op: 0, bx: 50, by: 50 };
+// ── Public entry point ─────────────────────────────────────────────────────────
 
-  constructor(app: App, card: CollectionCard) {
-    super(app);
-    this.card = card;
+export function openPokemonCardZoom(card: CollectionCard): void {
+  const suffix    = getCardSuffix(card.id);
+  const rarity    = mapRarity(card.rarity, suffix);
+  const supertype = detectSupertype(card.type);
+  const typeClass = getTypeClasses(card.type);
+  const foilUrl   = getFoilUrl(card.set, card.number, suffix);
+
+  // ── Full-screen overlay (same pattern as CardZoomModal) ──────────────────────
+  const overlay = document.createElement('div');
+  overlay.className = 'pkmn-zoom-overlay';
+
+  const scopeWrap = document.createElement('div');
+  scopeWrap.className = 'pkmn-zoom-modal'; // CSS effect scope
+
+  // ── Card element ─────────────────────────────────────────────────────────────
+  const cardEl = document.createElement('div');
+  cardEl.className = ['card', 'interactive', typeClass].filter(Boolean).join(' ');
+  cardEl.dataset.rarity         = rarity;
+  cardEl.dataset.supertype      = supertype;
+  cardEl.dataset.subtypes       = 'basic';
+  cardEl.dataset.set            = card.set;
+  cardEl.dataset.number         = card.number;
+  cardEl.dataset.trainerGallery = 'false';
+
+  const cur = makeState(), tgt = makeState();
+  applyVars(cardEl, cur);
+
+  const translater = document.createElement('div');
+  translater.className = 'card__translater';
+
+  const rotator = document.createElement('button');
+  rotator.className = 'card__rotator';
+  rotator.setAttribute('aria-label', card.name);
+
+  const backImg = document.createElement('img');
+  backImg.className = 'card__back';
+  backImg.src = BACK_URL;
+  backImg.alt = 'Card back';
+  rotator.appendChild(backImg);
+
+  const front = document.createElement('div');
+  front.className = 'card__front';
+  if (foilUrl) {
+    front.style.cssText = `--foil:url(${foilUrl});--mask:url(${foilUrl})`;
   }
 
-  onOpen() {
-    const { contentEl, modalEl } = this;
-    contentEl.addClass('pkmn-zoom-modal');
-    contentEl.empty();
+  cardEl.classList.add('loading');
+  const frontImg = document.createElement('img');
+  frontImg.src = card.imageUrl;
+  frontImg.alt = card.name;
+  frontImg.setAttribute('loading', 'eager');
+  front.appendChild(frontImg);
 
-    // Darken the modal backdrop
-    modalEl.style.background = 'rgba(0,0,0,0.85)';
-    modalEl.style.boxShadow = 'none';
-
-    const card = this.card;
-    const suffix    = getCardSuffix(card.id);
-    const rarity    = mapRarity(card.rarity, suffix);
-    const supertype = detectSupertype(card.type);
-    const typeClass = getTypeClasses(card.type);
-    const foilUrl   = getFoilUrl(card.set, card.number, suffix);
-
-    const wrapper = contentEl.createDiv({ cls: 'pkmn-zoom-wrapper' });
-    wrapper.addEventListener('click', (e) => { if (e.target === wrapper) this.close(); });
-
-    // Build the card element with all required data attributes
-    const cardEl = document.createElement('div');
-    cardEl.className = ['card', 'interactive', typeClass].filter(Boolean).join(' ');
-    cardEl.dataset.rarity          = rarity;
-    cardEl.dataset.supertype       = supertype;
-    cardEl.dataset.subtypes        = 'basic';
-    cardEl.dataset.set             = card.set;
-    cardEl.dataset.number          = card.number;
-    cardEl.dataset.trainerGallery  = 'false';
-    wrapper.appendChild(cardEl);
-
-    this.applyVars(cardEl);
-
-    const translater = cardEl.createDiv({ cls: 'card__translater' });
-    const rotator    = translater.createEl('button', { cls: 'card__rotator' });
-    rotator.setAttribute('aria-label', card.name);
-
-    rotator.createEl('img', {
-      cls: 'card__back',
-      attr: { src: BACK_URL, alt: 'Card back', loading: 'lazy' },
-    });
-
-    const front = rotator.createDiv({ cls: 'card__front' });
+  frontImg.onload = () => {
+    cardEl.classList.remove('loading');
     if (foilUrl) {
-      front.style.cssText = `--foil:url(${foilUrl});--mask:url(${foilUrl})`;
+      // Probe if foil loaded (attempt a 1x1 image test via the same URL)
+      const probe = new Image();
+      probe.onload  = () => cardEl.classList.add('masked');
+      probe.onerror = () => {}; // fallback: CSS-only effect, no masked class
+      probe.src = foilUrl;
     }
+  };
+  frontImg.onerror = () => cardEl.classList.remove('loading');
 
-    cardEl.addClass('loading');
-    const img = front.createEl('img', { attr: { src: card.imageUrl, alt: card.name, loading: 'eager' } });
-    img.onload  = () => { cardEl.removeClass('loading'); if (foilUrl) cardEl.addClass('masked'); };
-    img.onerror = () => cardEl.removeClass('loading');
-
-    for (const cls of ['card__shine', 'card__glitter', 'card__glare', 'card__glare2']) {
-      front.createDiv({ cls });
-    }
-
-    this.cardEl = cardEl;
-    this.attachPointer(cardEl);
-    this.rafId = requestAnimationFrame(this.tick);
+  for (const cls of ['card__shine', 'card__glitter', 'card__glare', 'card__glare2']) {
+    const d = document.createElement('div');
+    d.className = cls;
+    front.appendChild(d);
   }
 
-  onClose() {
-    cancelAnimationFrame(this.rafId);
-    this.cardEl = null;
-    this.contentEl.empty();
-  }
+  rotator.appendChild(front);
+  translater.appendChild(rotator);
+  cardEl.appendChild(translater);
+  scopeWrap.appendChild(cardEl);
+  overlay.appendChild(scopeWrap);
+  document.body.appendChild(overlay);
 
-  // ── Animation loop ─────────────────────────────────────────────────────────
+  requestAnimationFrame(() => overlay.classList.add('pkmn-zoom-active'));
 
-  private tick = (): void => {
-    if (!this.cardEl) return;
-    const L = 0.12, c = this.cur, t = this.tgt;
-    c.rx += (t.rx - c.rx) * L;
-    c.ry += (t.ry - c.ry) * L;
-    c.px += (t.px - c.px) * L;
-    c.py += (t.py - c.py) * L;
-    c.op += (t.op - c.op) * L;
-    c.bx += (t.bx - c.bx) * L;
-    c.by += (t.by - c.by) * L;
-    this.applyVars(this.cardEl);
-    this.rafId = requestAnimationFrame(this.tick);
+  // ── Animation loop ───────────────────────────────────────────────────────────
+  let rafId = 0;
+  const tick = () => {
+    const L = 0.12;
+    cur.rx += (tgt.rx - cur.rx) * L;
+    cur.ry += (tgt.ry - cur.ry) * L;
+    cur.px += (tgt.px - cur.px) * L;
+    cur.py += (tgt.py - cur.py) * L;
+    cur.op += (tgt.op - cur.op) * L;
+    cur.bx += (tgt.bx - cur.bx) * L;
+    cur.by += (tgt.by - cur.by) * L;
+    applyVars(cardEl, cur);
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
+
+  // ── Pointer tracking ─────────────────────────────────────────────────────────
+  cardEl.addEventListener('pointermove', (e: PointerEvent) => {
+    const r = cardEl.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width)  * 100;
+    const y = ((e.clientY - r.top)  / r.height) * 100;
+    tgt.rx = (x - 50) *  0.35;
+    tgt.ry = (y - 50) * -0.35;
+    tgt.px = x;
+    tgt.py = y;
+    const dx = (x - 50) / 50, dy = (y - 50) / 50;
+    tgt.op = Math.min(0.3 + Math.sqrt(dx*dx + dy*dy) * 0.5, 0.9);
+    tgt.bx = 40 + (x / 100) * 20;
+    tgt.by = 40 + (y / 100) * 20;
+    cardEl.classList.add('interacting');
+  });
+
+  cardEl.addEventListener('pointerleave', () => {
+    Object.assign(tgt, makeState());
+    cardEl.classList.remove('interacting');
+  });
+
+  // ── Close ────────────────────────────────────────────────────────────────────
+  const close = () => {
+    cancelAnimationFrame(rafId);
+    overlay.classList.remove('pkmn-zoom-active');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(() => overlay.remove(), 250);
   };
 
-  private applyVars(el: HTMLElement | null): void {
-    if (!el) return;
-    const { rx, ry, px, py, op, bx, by } = this.cur;
-    const dx   = (px - 50) / 50;
-    const dy   = (py - 50) / 50;
-    const dist = Math.min(Math.sqrt(dx * dx + dy * dy), 1);
-    el.style.setProperty('--rotate-x',          `${rx}deg`);
-    el.style.setProperty('--rotate-y',          `${ry}deg`);
-    el.style.setProperty('--pointer-x',         `${px}%`);
-    el.style.setProperty('--pointer-y',         `${py}%`);
-    el.style.setProperty('--card-opacity',      `${op}`);
-    el.style.setProperty('--background-x',      `${bx}%`);
-    el.style.setProperty('--background-y',      `${by}%`);
-    el.style.setProperty('--pointer-from-center', `${dist}`);
-    el.style.setProperty('--pointer-from-top',  `${py / 100}`);
-    el.style.setProperty('--pointer-from-left', `${px / 100}`);
-    el.style.setProperty('--card-scale',        '1');
-    el.style.setProperty('--translate-x',       '0px');
-    el.style.setProperty('--translate-y',       '0px');
-    el.style.setProperty('--rotate-delta',      '0');
-    el.style.setProperty('--seedx',             '0.5');
-    el.style.setProperty('--seedy',             '0.5');
-  }
-
-  private attachPointer(el: HTMLElement): void {
-    el.addEventListener('pointermove', (e: PointerEvent) => {
-      const r = el.getBoundingClientRect();
-      const x = ((e.clientX - r.left) / r.width)  * 100;
-      const y = ((e.clientY - r.top)  / r.height) * 100;
-      this.tgt.rx = (x - 50) *  0.35;
-      this.tgt.ry = (y - 50) * -0.35;
-      this.tgt.px = x;
-      this.tgt.py = y;
-      const dx = (x - 50) / 50, dy = (y - 50) / 50;
-      const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 1);
-      this.tgt.op = 0.3 + dist * 0.5;
-      this.tgt.bx = 40 + (x / 100) * 20;
-      this.tgt.by = 40 + (y / 100) * 20;
-      el.classList.add('interacting');
-    });
-
-    el.addEventListener('pointerleave', () => {
-      Object.assign(this.tgt, { rx: 0, ry: 0, px: 50, py: 50, op: 0, bx: 50, by: 50 });
-      el.classList.remove('interacting');
-    });
-  }
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target === scopeWrap) close();
+  });
 }
