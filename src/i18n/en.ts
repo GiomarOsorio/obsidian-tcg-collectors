@@ -182,6 +182,14 @@ export const en = {
   settings_pokemon_sponsor_desc:      'TCGdex provides free Pokémon card data and prices. Consider sponsoring!',
 
   // Pokémon new-collection modal
+  field_name_ph_pokemon:    'e.g. Sword & Shield—Darkness Ablaze',
+  pokemon_form_type_catalog:'Set catalog',
+  pokemon_form_type_custom: 'Custom (enter ID)',
+  pokemon_set_search_ph:    'Search by name or ID…',
+  pokemon_set_loading:      'Loading sets…',
+  pokemon_set_no_results:   'No sets found.',
+  pokemon_set_load_failed:  'Failed to load sets.',
+  pokemon_set_card_count:   '{count} cards',
   field_tcgdex_set_id:      'TCGdex set ID',
   field_tcgdex_set_id_desc: 'The TCGdex set identifier. Find it at tcgdex.dev.',
   field_tcgdex_set_id_ph:   'e.g. swsh1, sv10, base1',

@@ -549,6 +549,15 @@ function cardToMarkdownRows(card) {
 // src/TCGDexService.ts
 var import_obsidian2 = require("obsidian");
 var API2 = "https://api.tcgdex.net/v2/en";
+var setsCache = null;
+async function fetchAllSets() {
+  var _a;
+  if (setsCache) return setsCache;
+  const res = await (0, import_obsidian2.requestUrl)({ url: `${API2}/sets`, headers: { Accept: "application/json" } });
+  if (res.status < 200 || res.status >= 300) return [];
+  setsCache = (_a = res.json) != null ? _a : [];
+  return setsCache;
+}
 var VARIANT_DEFS = [
   { key: "normal", suffix: "_n", label: "Normal" },
   { key: "reverse", suffix: "_r", label: "Reverse Holo" },
@@ -818,6 +827,14 @@ var en = {
   settings_pokemon_sponsor: "Powered by TCGdex (open source)",
   settings_pokemon_sponsor_desc: "TCGdex provides free Pok\xE9mon card data and prices. Consider sponsoring!",
   // Pokémon new-collection modal
+  field_name_ph_pokemon: "e.g. Sword & Shield\u2014Darkness Ablaze",
+  pokemon_form_type_catalog: "Set catalog",
+  pokemon_form_type_custom: "Custom (enter ID)",
+  pokemon_set_search_ph: "Search by name or ID\u2026",
+  pokemon_set_loading: "Loading sets\u2026",
+  pokemon_set_no_results: "No sets found.",
+  pokemon_set_load_failed: "Failed to load sets.",
+  pokemon_set_card_count: "{count} cards",
   field_tcgdex_set_id: "TCGdex set ID",
   field_tcgdex_set_id_desc: "The TCGdex set identifier. Find it at tcgdex.dev.",
   field_tcgdex_set_id_ph: "e.g. swsh1, sv10, base1",
@@ -994,7 +1011,15 @@ var es = {
   variant_normal: "\u25C7 Normal",
   variant_reverse_holo: "\u21BA Reverse Holo",
   variant_holo: "\u2726 Holo",
-  variant_first_edition: "\u2460 1ra Edici\xF3n"
+  variant_first_edition: "\u2460 1ra Edici\xF3n",
+  field_name_ph_pokemon: "ej. Espada y Escudo\u2014Choque Rebelde",
+  pokemon_form_type_catalog: "Cat\xE1logo de sets",
+  pokemon_form_type_custom: "Personalizado (ingresar ID)",
+  pokemon_set_search_ph: "Buscar por nombre o ID\u2026",
+  pokemon_set_loading: "Cargando sets\u2026",
+  pokemon_set_no_results: "No se encontraron sets.",
+  pokemon_set_load_failed: "Error al cargar los sets.",
+  pokemon_set_card_count: "{count} cartas"
 };
 
 // src/i18n/fr.ts
@@ -2058,6 +2083,7 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
     this.format = "paper";
     // Pokémon form state
     this.tcgdexSetId = "";
+    this.pokemonFormType = "catalog";
     this.plugin = plugin;
     this.onCreated = onCreated;
     if (editTarget) {
@@ -2205,15 +2231,101 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
   }
   // ── Pokémon form ────────────────────────────────────────────────────────────
   renderPokemonForm(el) {
-    new import_obsidian4.Setting(el).setName(t("field_name")).setDesc(t("field_name_desc")).addText(
-      (tx) => tx.setPlaceholder(t("field_name_placeholder")).setValue(this.name).onChange((v) => this.name = v.trim())
-    );
-    new import_obsidian4.Setting(el).setName(t("field_tcgdex_set_id")).setDesc(t("field_tcgdex_set_id_desc")).addText(
+    let nameInputEl = null;
+    new import_obsidian4.Setting(el).setName(t("field_name")).setDesc(t("field_name_desc")).addText((tx) => {
+      tx.setPlaceholder(t("field_name_ph_pokemon")).setValue(this.name).onChange((v) => this.name = v.trim());
+      nameInputEl = tx.inputEl;
+    });
+    const typeWrap = el.createDiv({ cls: "ncm-pokemon-type-toggle" });
+    const catalogBtn = typeWrap.createEl("button", {
+      cls: `ncm-type-btn${this.pokemonFormType === "catalog" ? " ncm-type-btn-active" : ""}`,
+      text: t("pokemon_form_type_catalog")
+    });
+    const customBtn = typeWrap.createEl("button", {
+      cls: `ncm-type-btn${this.pokemonFormType === "custom" ? " ncm-type-btn-active" : ""}`,
+      text: t("pokemon_form_type_custom")
+    });
+    const catalogSection = el.createDiv({ cls: "ncm-pokemon-catalog" });
+    const customSection = el.createDiv({ cls: "ncm-pokemon-custom" });
+    if (this.pokemonFormType === "custom") catalogSection.style.display = "none";
+    else customSection.style.display = "none";
+    this.renderSetCatalog(catalogSection, () => nameInputEl);
+    new import_obsidian4.Setting(customSection).setName(t("field_tcgdex_set_id")).setDesc(t("field_tcgdex_set_id_desc")).addText(
       (tx) => tx.setPlaceholder(t("field_tcgdex_set_id_ph")).setValue(this.tcgdexSetId).onChange((v) => this.tcgdexSetId = v.trim().toLowerCase())
     );
+    catalogBtn.addEventListener("click", () => {
+      this.pokemonFormType = "catalog";
+      catalogBtn.addClass("ncm-type-btn-active");
+      customBtn.removeClass("ncm-type-btn-active");
+      catalogSection.style.display = "";
+      customSection.style.display = "none";
+    });
+    customBtn.addEventListener("click", () => {
+      this.pokemonFormType = "custom";
+      customBtn.addClass("ncm-type-btn-active");
+      catalogBtn.removeClass("ncm-type-btn-active");
+      customSection.style.display = "";
+      catalogSection.style.display = "none";
+    });
     new import_obsidian4.Setting(el).addButton(
       (btn) => btn.setButtonText(this.editTarget ? t("btn_save") : t("btn_create")).setCta().onClick(() => this.editTarget ? this.savePokemon() : this.createPokemon())
     ).addButton((btn) => btn.setButtonText(t("btn_cancel")).onClick(() => this.close()));
+  }
+  renderSetCatalog(el, getNameInput) {
+    const searchInput = el.createEl("input", {
+      cls: "ncm-set-search",
+      attr: { type: "text", placeholder: t("pokemon_set_search_ph") }
+    });
+    const listEl = el.createDiv({ cls: "ncm-set-list" });
+    listEl.createDiv({ cls: "ncm-set-status", text: t("pokemon_set_loading") });
+    fetchAllSets().then((sets) => {
+      const sorted = [...sets].sort((a, b) => {
+        if (a.releaseDate && b.releaseDate) return b.releaseDate.localeCompare(a.releaseDate);
+        return a.name.localeCompare(b.name);
+      });
+      const paint = (query) => {
+        var _a, _b;
+        listEl.empty();
+        const q = query.toLowerCase();
+        const filtered = q ? sorted.filter((s) => {
+          var _a2;
+          return s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q) || ((_a2 = s.serie) == null ? void 0 : _a2.name.toLowerCase().includes(q));
+        }) : sorted;
+        if (filtered.length === 0) {
+          listEl.createDiv({ cls: "ncm-set-status", text: t("pokemon_set_no_results") });
+          return;
+        }
+        for (const set of filtered) {
+          const isSelected = this.tcgdexSetId === set.id;
+          const item = listEl.createDiv({ cls: `ncm-set-item${isSelected ? " ncm-set-item-selected" : ""}` });
+          item.createEl("span", { cls: "ncm-set-name", text: set.name });
+          const meta = item.createDiv({ cls: "ncm-set-meta" });
+          if (set.serie) meta.createEl("span", { cls: "ncm-set-serie", text: set.serie.name });
+          meta.createEl("code", { cls: "ncm-set-id", text: set.id });
+          if ((_a = set.cardCount) == null ? void 0 : _a.total) {
+            meta.createEl("span", { cls: "ncm-set-count", text: t("pokemon_set_card_count", { count: set.cardCount.total }) });
+          }
+          item.addEventListener("click", () => {
+            this.tcgdexSetId = set.id;
+            if (!this.name) {
+              this.name = set.name;
+              const inp = getNameInput();
+              if (inp) inp.value = set.name;
+            }
+            listEl.querySelectorAll(".ncm-set-item").forEach((el2) => el2.removeClass("ncm-set-item-selected"));
+            item.addClass("ncm-set-item-selected");
+          });
+        }
+        if (this.tcgdexSetId) {
+          (_b = listEl.querySelector(".ncm-set-item-selected")) == null ? void 0 : _b.scrollIntoView({ block: "nearest" });
+        }
+      };
+      paint("");
+      searchInput.addEventListener("input", () => paint(searchInput.value));
+    }).catch(() => {
+      listEl.empty();
+      listEl.createDiv({ cls: "ncm-set-status", text: t("pokemon_set_load_failed") });
+    });
   }
   // ── Coming soon ─────────────────────────────────────────────────────────────
   renderComingSoon(el, game) {

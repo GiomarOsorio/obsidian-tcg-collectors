@@ -160,4 +160,12 @@ export const es: Locale = {
   variant_reverse_holo:            '↺ Reverse Holo',
   variant_holo:                    '✦ Holo',
   variant_first_edition:           '① 1ra Edición',
+  field_name_ph_pokemon:           'ej. Espada y Escudo—Choque Rebelde',
+  pokemon_form_type_catalog:       'Catálogo de sets',
+  pokemon_form_type_custom:        'Personalizado (ingresar ID)',
+  pokemon_set_search_ph:           'Buscar por nombre o ID…',
+  pokemon_set_loading:             'Cargando sets…',
+  pokemon_set_no_results:          'No se encontraron sets.',
+  pokemon_set_load_failed:         'Error al cargar los sets.',
+  pokemon_set_card_count:          '{count} cartas',
 };
