@@ -1,7 +1,23 @@
 import { TFile, Vault } from 'obsidian';
-import { Collection, CollectionCard, CollectionType } from './types';
+import { Collection, CollectionCard, CollectionFormat, CollectionType, PokemonVariantImport } from './types';
+
+const SUFFIX_PATTERN = /_([nrhf]e?)$/;
 
 const CHECKBOX_PATTERN = /<input type="checkbox"/;
+
+export function yamlStr(s: string): string {
+  if (/[:#\[\]{},]/.test(s) || s.startsWith('"') || s.startsWith("'")) {
+    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+  return s;
+}
+
+function unquoteYaml(s: string): string {
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return s;
+}
 
 export async function parseCollectionFile(
   file: TFile,
@@ -9,26 +25,29 @@ export async function parseCollectionFile(
 ): Promise<Collection | null> {
   const content = await vault.read(file);
 
-  let collectionType: CollectionType = 'custom';
+  let collectionType: CollectionType = 'mtg-theme';
   let setCode: string | undefined;
   let scryfallQuery: string | undefined;
   let scryfallOrder: string | undefined;
   let autoUpdate = false;
   let finishImport: 'all' | 'foil' | 'nonfoil' | undefined;
   let allPrints: boolean | undefined;
+  let collectionFormat: CollectionFormat = 'paper';
   let lastFetched: string | undefined;
   let pluginVersion: string | undefined;
   let collectionName = file.basename;
+  let tcgdexSetId: string | undefined;
+  let pokemonVariantImport: PokemonVariantImport | undefined;
 
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (fmMatch) {
     const fmLines = fmMatch[1].split('\n');
     for (const line of fmLines) {
       const [key, ...rest] = line.split(':');
-      const val = rest.join(':').trim();
+      const val = unquoteYaml(rest.join(':').trim());
       switch (key.trim()) {
         case 'collection-type':
-          collectionType = val as CollectionType;
+          collectionType = (val === 'custom' ? 'mtg-theme' : val) as CollectionType;
           break;
         case 'collection-name':
           collectionName = val;
@@ -57,6 +76,15 @@ export async function parseCollectionFile(
         case 'plugin-version':
           pluginVersion = val;
           break;
+        case 'collection-format':
+          collectionFormat = val as CollectionFormat;
+          break;
+        case 'tcgdex-set-id':
+          tcgdexSetId = val;
+          break;
+        case 'pokemon-variant-import':
+          pokemonVariantImport = val as PokemonVariantImport;
+          break;
       }
     }
   }
@@ -70,7 +98,10 @@ export async function parseCollectionFile(
     name: collectionName,
     path: file.path,
     type: collectionType,
+    format: collectionFormat,
     setCode,
+    tcgdexSetId,
+    pokemonVariantImport,
     scryfallQuery,
     scryfallOrder,
     autoUpdate,
@@ -121,13 +152,17 @@ function parseCards(content: string): CollectionCard[] {
 }
 
 function finishSuffix(name: string, id: string): string {
-  // New-style IDs have explicit suffix
-  if (id.endsWith('_f')) return '_f';
-  if (id.endsWith('_n')) return '_n';
-  // Infer from card name for legacy cards
+  const m = id.match(SUFFIX_PATTERN);
+  if (m) return `_${m[1]}`;
+  // Infer from card name for legacy MTG cards
   if (name.includes('(Foil)')) return '_f';
   if (name.includes('(Normal)')) return '_n';
   return ''; // unknown — treat as "any finish"
+}
+
+function extractIdSuffix(id: string): string {
+  const m = id.match(SUFFIX_PATTERN);
+  return m ? `_${m[1]}` : '_n';
 }
 
 export function getExistingCardKeys(content: string): Set<string> {
@@ -265,6 +300,73 @@ export async function setCardCount(
 }
 
 /**
+ * Replace the entire frontmatter block with new lines, preserving the body (card table).
+ */
+export async function replaceFrontmatter(
+  file: TFile,
+  fmLines: string[],
+  vault: Vault
+): Promise<void> {
+  const content = await vault.read(file);
+  const fmEnd = content.indexOf('\n---', 4);
+  if (content.startsWith('---\n') && fmEnd !== -1) {
+    const body = content.slice(fmEnd + 4); // skip '\n---'
+    // Normalize leading newlines to exactly one blank line (prevents accumulation on repeated saves)
+    await vault.modify(file, fmLines.join('\n') + body.replace(/^\n*/, '\n\n'));
+  } else {
+    await vault.modify(file, fmLines.join('\n') + '\n\n' + content);
+  }
+}
+
+export function extractOwnedMap(content: string): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const line of content.split('\n')) {
+    if (!CHECKBOX_PATTERN.test(line)) continue;
+    const cells = line.split('|').slice(1, -1).map(c => c.trim());
+    if (cells.length < 7) continue;
+    const checkboxCell = cells[0];
+    const isOwned = checkboxCell.includes('checked') && !checkboxCell.includes('unchecked');
+    if (!isOwned) continue;
+    const countMatch = checkboxCell.match(/data-count="(\d+)"/);
+    const count = countMatch ? parseInt(countMatch[1]) : 1;
+    const set = cells[5].trim().toLowerCase();
+    const number = cells[6].trim();
+    const idMatch = checkboxCell.match(/id="([^"]+)"/);
+    const id = idMatch?.[1] ?? '';
+    const suffix = extractIdSuffix(id);
+    map.set(`${set}#${number}${suffix}`, count);
+  }
+  return map;
+}
+
+export async function clearCardRows(file: TFile, vault: Vault): Promise<void> {
+  const content = await vault.read(file);
+  const lines = content.split('\n');
+  const filtered = lines.filter(line => !CHECKBOX_PATTERN.test(line));
+  await vault.modify(file, filtered.join('\n').trimEnd() + '\n');
+}
+
+export function applyOwnedStates(rows: string[], ownedMap: Map<string, number>): string[] {
+  return rows.map(row => {
+    const cells = row.split('|').slice(1, -1).map(c => c.trim());
+    if (cells.length < 7) return row;
+    const set = cells[5].trim().toLowerCase();
+    const number = cells[6].trim();
+    const idMatch = cells[0].match(/id="([^"]+)"/);
+    const id = idMatch?.[1] ?? '';
+    const suffix = extractIdSuffix(id);
+    const prevCount = ownedMap.get(`${set}#${number}${suffix}`);
+    if (prevCount && prevCount > 0) {
+      return row.replace(
+        `unchecked id="${id}"`,
+        prevCount > 1 ? `checked id="${id}" data-count="${prevCount}"` : `checked id="${id}"`
+      );
+    }
+    return row;
+  });
+}
+
+/**
  * Update or insert a single key-value pair in the YAML frontmatter of a file.
  * If the key exists, its line is replaced. If not, it is inserted before the closing ---.
  */
@@ -283,10 +385,11 @@ export async function patchFrontmatter(
   if (endIdx === -1) return;
 
   const existing = lines.findIndex(l => l.trimStart().startsWith(`${key}:`));
+  const serialized = `${key}: ${yamlStr(value)}`;
   if (existing !== -1 && existing < endIdx) {
-    lines[existing] = `${key}: ${value}`;
+    lines[existing] = serialized;
   } else {
-    lines.splice(endIdx, 0, `${key}: ${value}`);
+    lines.splice(endIdx, 0, serialized);
   }
 
   await vault.modify(file, lines.join('\n'));

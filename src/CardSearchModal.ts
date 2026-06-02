@@ -1,8 +1,8 @@
-import { App, Modal, Notice, requestUrl } from 'obsidian';
+import { App, Modal, Notice, requestUrl, TFile } from 'obsidian';
 import { ScryfallCard, cardToMarkdownRows } from './ScryfallService';
 import { appendCards } from './parser';
 import { Collection } from './types';
-import { TFile } from 'obsidian';
+import { t } from './i18n';
 
 const API = 'https://api.scryfall.com';
 
@@ -47,22 +47,22 @@ export class CardSearchModal extends Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass('card-search-modal');
-    contentEl.createEl('h2', { text: `Add card to "${this.collection.name}"` });
+    contentEl.createEl('h2', { text: t('csm_title', { name: this.collection.name }) });
 
     const searchWrap = contentEl.createDiv({ cls: 'csm-search-wrap' });
     const input = searchWrap.createEl('input', {
       cls: 'csm-input',
-      attr: { type: 'text', placeholder: 'Type card name...', autofocus: 'true' },
+      attr: { type: 'text', placeholder: t('csm_placeholder'), autofocus: 'true' },
     });
 
     this.suggestionsEl = searchWrap.createDiv({ cls: 'csm-suggestions' });
     this.printingsEl = contentEl.createDiv({ cls: 'csm-printings' });
 
     const footer = contentEl.createDiv({ cls: 'csm-footer' });
-    const countEl = footer.createEl('span', { cls: 'csm-count', text: '0 selected' });
+    const countEl = footer.createEl('span', { cls: 'csm-count', text: t('csm_selected', { count: 0 }) });
     this.addBtn = footer.createEl('button', {
       cls: 'csm-add-btn',
-      text: 'Add to Collection',
+      text: t('csm_add_btn'),
       attr: { disabled: 'true' },
     });
     this.addBtn.addEventListener('click', () => this.addSelected());
@@ -91,7 +91,7 @@ export class CardSearchModal extends Modal {
   private renderSuggestions(names: string[], input: HTMLInputElement, countEl: HTMLElement) {
     this.suggestionsEl.empty();
     if (names.length === 0) {
-      this.suggestionsEl.createEl('div', { cls: 'csm-no-results', text: 'No matches' });
+      this.suggestionsEl.createEl('div', { cls: 'csm-no-results', text: t('csm_no_matches') });
       return;
     }
     for (const name of names) {
@@ -101,7 +101,7 @@ export class CardSearchModal extends Modal {
         this.suggestionsEl.empty();
         this.selectedPrints.clear();
         this.printingsEl.empty();
-        this.printingsEl.createEl('div', { cls: 'csm-loading', text: 'Loading printings...' });
+        this.printingsEl.createEl('div', { cls: 'csm-loading', text: t('csm_loading_printings') });
 
         this.printings = await fetchPrintings(name);
         this.renderPrintings(this.printings, countEl);
@@ -112,13 +112,13 @@ export class CardSearchModal extends Modal {
   private renderPrintings(cards: ScryfallCard[], countEl: HTMLElement) {
     this.printingsEl.empty();
     if (cards.length === 0) {
-      this.printingsEl.createEl('div', { cls: 'csm-no-results', text: 'No printings found.' });
+      this.printingsEl.createEl('div', { cls: 'csm-no-results', text: t('csm_no_printings') });
       return;
     }
 
     this.printingsEl.createEl('p', {
       cls: 'csm-hint',
-      text: 'Select printings to add (click to toggle):',
+      text: t('csm_hint'),
     });
 
     const grid = this.printingsEl.createDiv({ cls: 'csm-print-grid' });
@@ -167,7 +167,7 @@ export class CardSearchModal extends Modal {
 
   private updateCount(countEl: HTMLElement) {
     const n = this.selectedPrints.size;
-    countEl.textContent = `${n} selected`;
+    countEl.textContent = t('csm_selected', { count: n });
     if (n > 0) {
       this.addBtn.removeAttribute('disabled');
     } else {
@@ -194,7 +194,10 @@ export class CardSearchModal extends Modal {
     if (!(file instanceof TFile)) return;
 
     const added = await appendCards(file, rows, this.app.vault);
-    new Notice(added > 0 ? `Added ${added} card(s) to "${this.collection.name}".` : 'All selected cards already in collection.');
+    new Notice(added > 0
+      ? t('notice_cards_added_csm', { count: added, name: this.collection.name })
+      : t('notice_already_in_coll')
+    );
     this.close();
     if (added > 0) this.onAdded();
   }
