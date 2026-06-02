@@ -103,6 +103,9 @@ export function openPokemonCardZoom(card: CollectionCard): void {
   cardEl.dataset.number         = card.number;
   cardEl.dataset.trainerGallery = 'false';
 
+  // Force pointer events on card — base CSS sets pointer-events: none on .card
+  cardEl.style.pointerEvents = 'auto';
+
   const cur = makeState(), tgt = makeState();
   applyVars(cardEl, cur);
 
@@ -175,9 +178,8 @@ export function openPokemonCardZoom(card: CollectionCard): void {
   };
   rafId = requestAnimationFrame(tick);
 
-  // Pointer tracking on rotator — it has pointer-events: auto from base CSS
-  rotator.addEventListener('pointermove', (e: PointerEvent) => {
-    const r = rotator.getBoundingClientRect();
+  cardEl.addEventListener('pointermove', (e: PointerEvent) => {
+    const r = cardEl.getBoundingClientRect();
     const x = ((e.clientX - r.left) / r.width)  * 100;
     const y = ((e.clientY - r.top)  / r.height) * 100;
     tgt.rx = (x - 50) *  0.35;
@@ -191,7 +193,7 @@ export function openPokemonCardZoom(card: CollectionCard): void {
     cardEl.classList.add('interacting');
   });
 
-  rotator.addEventListener('pointerleave', () => {
+  cardEl.addEventListener('pointerleave', () => {
     Object.assign(tgt, makeState());
     cardEl.classList.remove('interacting');
   });

@@ -1272,20 +1272,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: default;
-  perspective: 800px;
 }
 .pkmn-zoom-modal .card {
-  width: 260px;
+  width: 300px;
   display: block;
   cursor: default;
   user-select: none;
 }
 @media (min-width: 600px) {
-  .pkmn-zoom-modal .card { width: 360px; }
+  .pkmn-zoom-modal .card { width: 420px; }
 }
 @media (min-width: 900px) {
-  .pkmn-zoom-modal .card { width: 420px; }
+  .pkmn-zoom-modal .card { width: 520px; }
 }
 /* Pokemon card effects — adapted from pokemon-cards-151 by @simeydotme (MIT) */
 /* https://github.com/simeydotme/pokemon-cards-151 */

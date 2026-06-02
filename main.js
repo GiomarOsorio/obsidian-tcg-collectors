@@ -3137,6 +3137,7 @@ function openPokemonCardZoom(card) {
   cardEl.dataset.set = card.set;
   cardEl.dataset.number = card.number;
   cardEl.dataset.trainerGallery = "false";
+  cardEl.style.pointerEvents = "auto";
   const cur = makeState(), tgt = makeState();
   applyVars(cardEl, cur);
   const translater = document.createElement("div");
@@ -3197,8 +3198,8 @@ function openPokemonCardZoom(card) {
     rafId = requestAnimationFrame(tick);
   };
   rafId = requestAnimationFrame(tick);
-  rotator.addEventListener("pointermove", (e) => {
-    const r = rotator.getBoundingClientRect();
+  cardEl.addEventListener("pointermove", (e) => {
+    const r = cardEl.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width * 100;
     const y = (e.clientY - r.top) / r.height * 100;
     tgt.rx = (x - 50) * 0.35;
@@ -3211,7 +3212,7 @@ function openPokemonCardZoom(card) {
     tgt.by = 40 + y / 100 * 20;
     cardEl.classList.add("interacting");
   });
-  rotator.addEventListener("pointerleave", () => {
+  cardEl.addEventListener("pointerleave", () => {
     Object.assign(tgt, makeState());
     cardEl.classList.remove("interacting");
   });
