@@ -57,9 +57,16 @@ export default class CollectorsPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
 
-  async saveSettings() {
+  async saveSettings(priceSourceChanged = false) {
     await this.saveData(this.settings);
     this.priceService.updateSettings(this.settings);
+    if (priceSourceChanged) {
+      for (const leaf of this.app.workspace.getLeavesOfType(COLLECTION_VIEW_TYPE)) {
+        if (leaf.view instanceof CollectionView) {
+          (leaf.view as CollectionView).refreshPrices();
+        }
+      }
+    }
   }
 
   async activateDashboard() {

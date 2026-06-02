@@ -12,7 +12,11 @@ export interface CollectionCard {
 }
 
 export type CollectionType = 'mtg-set' | 'mtg-theme' | 'pokemon-set';
-export type PokemonVariantImport = 'all' | 'normal' | 'reverse' | 'holo' | 'firstEdition';
+export type PokemonVariantImport =
+  | 'all'
+  | 'normal' | 'reverse' | 'holo' | 'firstEdition'
+  | 'rareHolo' | 'radiantRare' | 'illustrationRare' | 'doubleRare'
+  | 'ultraRare' | 'specialIllustrationRare' | 'hyperRare' | 'rainbowAlt';
 export type CollectionFormat = 'paper' | 'arena';
 
 export interface Collection {

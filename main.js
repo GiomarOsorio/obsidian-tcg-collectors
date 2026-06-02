@@ -633,30 +633,30 @@ function pokemonCardToMarkdownRows(card) {
   });
 }
 function getTCGPlayerPrice(card, suffix) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
-  const t2 = card.tcgplayer;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
+  const t2 = (_a = card.pricing) == null ? void 0 : _a.tcgplayer;
   if (!t2) return null;
   switch (suffix) {
     case "_n":
-      return (_b = (_a = t2.normal) == null ? void 0 : _a.marketPrice) != null ? _b : null;
+      return (_c = (_b = t2.normal) == null ? void 0 : _b.marketPrice) != null ? _c : null;
     case "_r":
-      return (_d = (_c = t2["reverse-holofoil"]) == null ? void 0 : _c.marketPrice) != null ? _d : null;
+      return (_g = (_f = (_d = t2.reverse) == null ? void 0 : _d.marketPrice) != null ? _f : (_e = t2["reverse-holofoil"]) == null ? void 0 : _e.marketPrice) != null ? _g : null;
     case "_h":
-      return (_f = (_e = t2.holofoil) == null ? void 0 : _e.marketPrice) != null ? _f : null;
+      return (_i = (_h = t2.holofoil) == null ? void 0 : _h.marketPrice) != null ? _i : null;
     case "_fe":
-      return (_j = (_i = (_g = t2["1st-edition-holofoil"]) == null ? void 0 : _g.marketPrice) != null ? _i : (_h = t2.holofoil) == null ? void 0 : _h.marketPrice) != null ? _j : null;
+      return (_o = (_n = (_l = (_j = t2["1st-edition-holofoil"]) == null ? void 0 : _j.marketPrice) != null ? _l : (_k = t2["1st-edition"]) == null ? void 0 : _k.marketPrice) != null ? _n : (_m = t2.holofoil) == null ? void 0 : _m.marketPrice) != null ? _o : null;
     default:
       return null;
   }
 }
 function getCardmarketPrice(card, suffix) {
-  var _a, _b, _c, _d, _e;
-  const cm = card.cardmarket;
+  var _a, _b, _c, _d, _e, _f;
+  const cm = (_a = card.pricing) == null ? void 0 : _a.cardmarket;
   if (!cm) return null;
   if (suffix === "_h") {
-    return (_c = (_b = (_a = cm["trend-holo"]) != null ? _a : cm["avg-holo"]) != null ? _b : cm.trend) != null ? _c : null;
+    return (_d = (_c = (_b = cm["trend-holo"]) != null ? _b : cm["avg-holo"]) != null ? _c : cm.trend) != null ? _d : null;
   }
-  return (_e = (_d = cm.trend) != null ? _d : cm.avg) != null ? _e : null;
+  return (_f = (_e = cm.trend) != null ? _e : cm.avg) != null ? _f : null;
 }
 
 // src/i18n/index.ts
@@ -848,6 +848,14 @@ var en = {
   pokemon_variant_reverse: "Reverse Holo only",
   pokemon_variant_holo: "Holo only",
   pokemon_variant_first_edition: "1st Edition only",
+  pokemon_variant_rare_holo: "Rare Holo only",
+  pokemon_variant_radiant_rare: "Radiant Rare only",
+  pokemon_variant_illustration_rare: "Illustration Rare only",
+  pokemon_variant_double_rare: "Double Rare only",
+  pokemon_variant_ultra_rare: "Ultra Rare only",
+  pokemon_variant_special_illustration_rare: "Special Illust. Rare only",
+  pokemon_variant_hyper_rare: "Hyper Rare only",
+  pokemon_variant_rainbow_alt: "Rainbow Alt only",
   field_tcgdex_set_id_desc: "The TCGdex set identifier. Find it at tcgdex.dev.",
   field_tcgdex_set_id_ph: "e.g. swsh1, sv10, base1",
   // Pokémon notices
@@ -861,7 +869,16 @@ var en = {
   variant_normal: "\u25C7 Normal",
   variant_reverse_holo: "\u21BA Reverse Holo",
   variant_holo: "\u2726 Holo",
-  variant_first_edition: "\u2460 1st Edition"
+  variant_first_edition: "\u2460 1st Edition",
+  // Pokémon rarity filter buttons
+  rarity_rare_holo: "\u2605 Rare Holo",
+  rarity_radiant_rare: "\u2726 Radiant Rare",
+  rarity_illustration_rare: "\u25C8 Illust. Rare",
+  rarity_double_rare: "\u2605\u2605 Double Rare",
+  rarity_ultra_rare: "\u25C9 Ultra Rare",
+  rarity_special_illustration_rare: "\u25C8\u25C8 Special Illust.",
+  rarity_hyper_rare: "\u2B21 Hyper Rare",
+  rarity_rainbow_alt: "\u{1F308} Rainbow Alt"
 };
 
 // src/i18n/es.ts
@@ -2337,6 +2354,14 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
       d.addOption("reverse", t("pokemon_variant_reverse"));
       d.addOption("holo", t("pokemon_variant_holo"));
       d.addOption("firstEdition", t("pokemon_variant_first_edition"));
+      d.addOption("rareHolo", t("pokemon_variant_rare_holo"));
+      d.addOption("radiantRare", t("pokemon_variant_radiant_rare"));
+      d.addOption("illustrationRare", t("pokemon_variant_illustration_rare"));
+      d.addOption("doubleRare", t("pokemon_variant_double_rare"));
+      d.addOption("ultraRare", t("pokemon_variant_ultra_rare"));
+      d.addOption("specialIllustrationRare", t("pokemon_variant_special_illustration_rare"));
+      d.addOption("hyperRare", t("pokemon_variant_hyper_rare"));
+      d.addOption("rainbowAlt", t("pokemon_variant_rainbow_alt"));
       d.setValue(this.pokemonVariantImport);
       d.onChange((v) => this.pokemonVariantImport = v);
     });
@@ -2594,7 +2619,7 @@ ${TABLE_HEADER}
     }
   }
   async fetchAndPopulatePokemon(file, previousOwned) {
-    var _a;
+    var _a, _b;
     new import_obsidian4.Notice(t("notice_fetching_pokemon", { name: this.name }));
     try {
       const cards = await fetchPokemonSetCards(
@@ -2607,8 +2632,23 @@ ${TABLE_HEADER}
         holo: "_h",
         firstEdition: "_fe"
       };
+      const rarityImportMap = {
+        rareHolo: "Rare Holo",
+        radiantRare: "Radiant rare",
+        illustrationRare: "Illustration rare",
+        doubleRare: "Double rare",
+        ultraRare: "Ultra Rare",
+        specialIllustrationRare: "Special illustration rare",
+        hyperRare: "Hyper rare",
+        rainbowAlt: "Rare Rainbow alt"
+      };
       const targetSuffix = (_a = suffixMap[this.pokemonVariantImport]) != null ? _a : null;
-      const rawRows = cards.flatMap(pokemonCardToMarkdownRows).filter((row) => !targetSuffix || row.includes(`${targetSuffix}">`));
+      const targetRarity = (_b = rarityImportMap[this.pokemonVariantImport]) != null ? _b : null;
+      const rawRows = cards.flatMap(pokemonCardToMarkdownRows).filter((row) => {
+        if (targetSuffix) return row.includes(`${targetSuffix}">`);
+        if (targetRarity) return row.toLowerCase().includes(`| ${targetRarity.toLowerCase()} |`);
+        return true;
+      });
       const rows = previousOwned ? applyOwnedStates(rawRows, previousOwned) : rawRows;
       if (previousOwned) {
         await clearCardRows(file, this.app.vault);
@@ -3056,6 +3096,223 @@ function openCardZoom(imageUrl, name, isFoil) {
   });
 }
 
+// src/PokemonCardZoomModal.ts
+function getCardSuffix(id) {
+  const m = id.match(/_([nrhf]e?)$/);
+  return m ? `_${m[1]}` : "_n";
+}
+function mapRarity(rarity, suffix) {
+  if (suffix === "_r") return "pokeball holo";
+  const r = (rarity != null ? rarity : "").toLowerCase().trim();
+  if (r === "hyper rare") return "hyper rare";
+  if (r === "special illustration rare") return "special illustration rare";
+  if (r === "illustration rare") return "illustration rare";
+  if (r === "ultra rare") return "ultra rare";
+  if (r === "double rare") return "double rare";
+  if (r === "radiant rare") return "radiant rare";
+  if (r === "rare holo vmax") return "rare holo vmax";
+  if (r === "rare rainbow alt") return "rare rainbow alt";
+  if (r === "rare holo" || r === "rare") return "rare holo";
+  if (r === "uncommon") return "uncommon";
+  return "common";
+}
+function detectSupertype(category) {
+  const l = category.toLowerCase();
+  if (l === "trainer") return "trainer";
+  if (l === "energy") return "energy";
+  return "pok\xE9mon";
+}
+function buildSubtypes(card) {
+  return [card.stage, card.suffix, card.trainerType].filter((v) => Boolean(v)).join(" ").toLowerCase() || "basic";
+}
+function clamp2(v, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, v));
+}
+function lerp(a, b, t2) {
+  return a + (b - a) * t2;
+}
+function adjustRange(val, fromMin, fromMax, toMin, toMax) {
+  return toMin + (toMax - toMin) * ((val - fromMin) / (fromMax - fromMin));
+}
+function openPokemonCardZoom(card, tcgCard) {
+  var _a, _b, _c;
+  const suffix = getCardSuffix(card.id);
+  const rarity = mapRarity((_a = tcgCard == null ? void 0 : tcgCard.rarity) != null ? _a : card.rarity, suffix);
+  const supertype = detectSupertype((_b = tcgCard == null ? void 0 : tcgCard.category) != null ? _b : card.type);
+  const subtypes = tcgCard ? buildSubtypes(tcgCard) : "basic";
+  const typeClass = ((_c = tcgCard == null ? void 0 : tcgCard.types) != null ? _c : []).map((t2) => t2.toLowerCase()).join(" ");
+  const overlay = document.createElement("div");
+  overlay.className = "pkmn-zoom-overlay";
+  const wrapper = document.createElement("div");
+  wrapper.className = "pkmn-zoom-wrapper";
+  const cardEl = document.createElement("div");
+  cardEl.className = ["card", "interactive", "pkmn-card-effects", typeClass].filter(Boolean).join(" ");
+  cardEl.dataset.rarity = rarity;
+  cardEl.dataset.supertype = supertype;
+  cardEl.dataset.subtypes = subtypes;
+  cardEl.dataset.set = card.set;
+  cardEl.dataset.number = card.number;
+  cardEl.dataset.trainerGallery = "false";
+  const rotator = document.createElement("div");
+  rotator.className = "card__rotator";
+  const frontImg = document.createElement("img");
+  frontImg.src = card.imageUrl;
+  frontImg.alt = card.name;
+  frontImg.className = "pkmn-card-img";
+  const shine = document.createElement("div");
+  shine.className = "card__shine";
+  const glitter = document.createElement("div");
+  glitter.className = "card__glitter";
+  const glare = document.createElement("div");
+  glare.className = "card__glare";
+  const glare2 = document.createElement("div");
+  glare2.className = "card__glare2";
+  rotator.append(frontImg, shine, glitter, glare, glare2);
+  cardEl.append(rotator);
+  let curRx = 0, curRy = 0, curPx = 50, curPy = 50, curOp = 0, curBx = 50, curBy = 50;
+  let tgtRx = 0, tgtRy = 0, tgtPx = 50, tgtPy = 50, tgtOp = 0, tgtBx = 50, tgtBy = 50;
+  let rafId = 0;
+  let isHovering = false;
+  const applyVars = () => {
+    const dx = (curPx - 50) / 50, dy = (curPy - 50) / 50;
+    const dist = Math.min(Math.sqrt(dx * dx + dy * dy), 1);
+    cardEl.style.setProperty("--rotate-x", `${curRx}deg`);
+    cardEl.style.setProperty("--rotate-y", `${curRy}deg`);
+    cardEl.style.setProperty("--pointer-x", `${curPx}%`);
+    cardEl.style.setProperty("--pointer-y", `${curPy}%`);
+    cardEl.style.setProperty("--background-x", `${curBx}%`);
+    cardEl.style.setProperty("--background-y", `${curBy}%`);
+    cardEl.style.setProperty("--card-opacity", `${curOp}`);
+    cardEl.style.setProperty("--pointer-from-center", `${dist}`);
+    cardEl.style.setProperty("--pointer-from-top", `${curPy / 100}`);
+    cardEl.style.setProperty("--pointer-from-left", `${curPx / 100}`);
+    cardEl.style.setProperty("--card-scale", "1");
+    cardEl.style.setProperty("--translate-x", "0px");
+    cardEl.style.setProperty("--translate-y", "0px");
+  };
+  applyVars();
+  wrapper.append(cardEl);
+  overlay.append(wrapper);
+  document.body.append(overlay);
+  requestAnimationFrame(() => overlay.classList.add("pkmn-zoom-active"));
+  const tick = () => {
+    const L = 0.12;
+    curRx = lerp(curRx, tgtRx, L);
+    curRy = lerp(curRy, tgtRy, L);
+    curPx = lerp(curPx, tgtPx, L);
+    curPy = lerp(curPy, tgtPy, L);
+    curOp = lerp(curOp, tgtOp, L);
+    curBx = lerp(curBx, tgtBx, L);
+    curBy = lerp(curBy, tgtBy, L);
+    applyVars();
+    if (isHovering || Math.abs(curOp - tgtOp) > 1e-3) {
+      rafId = requestAnimationFrame(tick);
+    } else {
+      rafId = 0;
+    }
+  };
+  const setFromXY = (x, y) => {
+    tgtRx = (x - 50) * -0.35;
+    tgtRy = (y - 50) * 0.35;
+    tgtPx = x;
+    tgtPy = y;
+    const dx = (x - 50) / 50, dy = (y - 50) / 50;
+    tgtOp = Math.min(0.3 + Math.sqrt(dx * dx + dy * dy) * 0.6, 1);
+    tgtBx = 40 + x / 100 * 20;
+    tgtBy = 40 + y / 100 * 20;
+  };
+  const resetTargets = () => {
+    tgtRx = 0;
+    tgtRy = 0;
+    tgtPx = 50;
+    tgtPy = 50;
+    tgtOp = 0;
+    tgtBx = 50;
+    tgtBy = 50;
+  };
+  cardEl.addEventListener("pointerenter", () => {
+    isHovering = true;
+    cardEl.classList.add("interacting");
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  });
+  cardEl.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") return;
+    const r = cardEl.getBoundingClientRect();
+    setFromXY(
+      clamp2((e.clientX - r.left) / r.width * 100),
+      clamp2((e.clientY - r.top) / r.height * 100)
+    );
+  });
+  cardEl.addEventListener("pointerleave", (e) => {
+    if (e.pointerType === "touch") return;
+    isHovering = false;
+    resetTargets();
+    cardEl.classList.remove("interacting");
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  });
+  cardEl.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    isHovering = true;
+    cardEl.classList.add("interacting");
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  }, { passive: false });
+  cardEl.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    const t2 = e.touches[0];
+    const r = cardEl.getBoundingClientRect();
+    setFromXY(
+      clamp2((t2.clientX - r.left) / r.width * 100),
+      clamp2((t2.clientY - r.top) / r.height * 100)
+    );
+  }, { passive: false });
+  cardEl.addEventListener("touchend", () => {
+    isHovering = false;
+    resetTargets();
+    cardEl.classList.remove("interacting");
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  });
+  let baseGamma = null;
+  let baseBeta = null;
+  const LIMIT_X = 16, LIMIT_Y = 18;
+  const onOrientation = (e) => {
+    var _a2, _b2;
+    if (isHovering) return;
+    const gamma = (_a2 = e.gamma) != null ? _a2 : 0;
+    const beta = (_b2 = e.beta) != null ? _b2 : 0;
+    if (baseGamma === null) {
+      baseGamma = gamma;
+      baseBeta = beta;
+      return;
+    }
+    const dx = clamp2(gamma - baseGamma, -LIMIT_X, LIMIT_X);
+    const dy = clamp2(beta - (baseBeta != null ? baseBeta : beta), -LIMIT_Y, LIMIT_Y);
+    tgtRx = dx * -1;
+    tgtRy = dy;
+    tgtPx = adjustRange(dx, -LIMIT_X, LIMIT_X, 0, 100);
+    tgtPy = adjustRange(dy, -LIMIT_Y, LIMIT_Y, 0, 100);
+    tgtOp = Math.min(0.2 + Math.sqrt((dx / LIMIT_X) ** 2 + (dy / LIMIT_Y) ** 2) * 0.7, 1);
+    tgtBx = adjustRange(dx, -LIMIT_X, LIMIT_X, 37, 63);
+    tgtBy = adjustRange(dy, -LIMIT_Y, LIMIT_Y, 33, 67);
+    cardEl.classList.add("interacting");
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  };
+  window.addEventListener("deviceorientation", onOrientation, true);
+  const close = () => {
+    cancelAnimationFrame(rafId);
+    window.removeEventListener("deviceorientation", onOrientation, true);
+    overlay.classList.remove("pkmn-zoom-active");
+    document.removeEventListener("keydown", onKey);
+    setTimeout(() => overlay.remove(), 300);
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") close();
+  };
+  document.addEventListener("keydown", onKey);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay || e.target === wrapper) close();
+  });
+}
+
 // src/CardSearchModal.ts
 var import_obsidian6 = require("obsidian");
 var API3 = "https://api.scryfall.com";
@@ -3274,6 +3531,18 @@ var CollectionView = class extends import_obsidian7.FileView {
       await this.fetchPricesForCollection(this.collection);
     }
   }
+  async refreshPrices() {
+    if (!this.collection || this.collection.format === "arena") return;
+    this.showLoading(t("loading_prices"));
+    if (this.collection.type === "pokemon-set") {
+      await this.plugin.priceService.fetchPokemonPrices(this.collection.cards.map((c) => c.id));
+    } else {
+      const ids = this.collection.cards.map((c) => ({ set: c.set.toLowerCase(), collector_number: c.number }));
+      await this.plugin.priceService.fetchPrices(ids, (s) => this.showLoading(t("loading_rate_limited", { seconds: s })));
+    }
+    this.hideLoading();
+    this.render();
+  }
   async fetchPricesForCollection(coll) {
     if (coll.type === "pokemon-set") {
       const anyUncached = coll.cards.some((card) => !this.plugin.priceService.isPokemonCached(card.set, card.number));
@@ -3399,9 +3668,18 @@ var CollectionView = class extends import_obsidian7.FileView {
         { value: "nonfoil", label: t("variant_normal") },
         { value: "reverse", label: t("variant_reverse_holo") },
         { value: "holo", label: t("variant_holo") },
-        { value: "firstEdition", label: t("variant_first_edition") }
+        { value: "firstEdition", label: t("variant_first_edition") },
+        { value: "rareHolo", label: t("rarity_rare_holo") },
+        { value: "radiantRare", label: t("rarity_radiant_rare") },
+        { value: "illustrationRare", label: t("rarity_illustration_rare") },
+        { value: "doubleRare", label: t("rarity_double_rare") },
+        { value: "ultraRare", label: t("rarity_ultra_rare") },
+        { value: "specialIllustrationRare", label: t("rarity_special_illustration_rare") },
+        { value: "hyperRare", label: t("rarity_hyper_rare") },
+        { value: "rainbowAlt", label: t("rarity_rainbow_alt") }
       ];
-      const variantWrap = row2.createDiv({ cls: "col-finish-wrap col-variant-wrap" });
+      const variantRow = controls.createDiv({ cls: "col-controls-row col-variant-row" });
+      const variantWrap = variantRow.createDiv({ cls: "col-finish-wrap col-variant-wrap" });
       for (const v of pokemonVariants) {
         const btn = variantWrap.createEl("button", {
           cls: `col-finish-btn${this.finishFilter === v.value ? " col-finish-btn-active" : ""}`,
@@ -3494,7 +3772,24 @@ var CollectionView = class extends import_obsidian7.FileView {
     const filtered = coll.cards.filter((card) => {
       if (this.filter === "owned" && !card.owned) return false;
       if (this.filter === "missing" && card.owned) return false;
-      if (this.finishFilter !== "all" && getCardVariant(card) !== this.finishFilter) return false;
+      if (this.finishFilter !== "all") {
+        const rarityFilterMap = {
+          rareHolo: "Rare Holo",
+          radiantRare: "Radiant rare",
+          illustrationRare: "Illustration rare",
+          doubleRare: "Double rare",
+          ultraRare: "Ultra Rare",
+          specialIllustrationRare: "Special illustration rare",
+          hyperRare: "Hyper rare",
+          rainbowAlt: "Rare Rainbow alt"
+        };
+        const rarityTarget = rarityFilterMap[this.finishFilter];
+        if (rarityTarget) {
+          if (card.rarity.toLowerCase() !== rarityTarget.toLowerCase()) return false;
+        } else {
+          if (getCardVariant(card) !== this.finishFilter) return false;
+        }
+      }
       if (this.searchQuery) return card.name.toLowerCase().includes(this.searchQuery.toLowerCase());
       return true;
     });
@@ -3565,7 +3860,16 @@ var CollectionView = class extends import_obsidian7.FileView {
         img.style.display = "none";
         imgWrap.createEl("div", { cls: "col-tile-img-fallback", text: (_a2 = card.name[0]) != null ? _a2 : "?" });
       });
-      tile.addEventListener("click", () => openCardZoom(card.imageUrl, card.name, isFoil));
+      tile.addEventListener("click", async () => {
+        var _a2;
+        if (coll.type === "pokemon-set") {
+          const baseId = card.id.replace(/_[nrhf]e?$/, "");
+          const tcgCard = (_a2 = await fetchPokemonCard(baseId)) != null ? _a2 : void 0;
+          openPokemonCardZoom(card, tcgCard);
+        } else {
+          openCardZoom(card.imageUrl, card.name, isFoil);
+        }
+      });
     } else {
       tile.createDiv({ cls: "col-tile-img-fallback", text: (_a = card.name[0]) != null ? _a : "?" });
     }
@@ -3798,7 +4102,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
       updateVisibility(this.plugin.settings.priceSource);
       d.onChange(async (v) => {
         this.plugin.settings.priceSource = v;
-        await this.plugin.saveSettings();
+        await this.plugin.saveSettings(true);
         updateVisibility(v);
       });
     });
@@ -3841,6 +4145,13 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
         });
       }
     );
+    this.sectionTitle(el, t("settings_section_card_data"));
+    this.sectionDesc(el, t("settings_card_data_desc"));
+    new import_obsidian8.Setting(el).setName(t("settings_source")).addDropdown((d) => {
+      d.addOption("tcgdex", "TCGdex");
+      d.setValue("tcgdex");
+      d.setDisabled(true);
+    });
     this.sectionTitle(el, t("settings_section_prices"));
     this.sectionDesc(el, t("settings_pokemon_price_source_desc"));
     new import_obsidian8.Setting(el).setName(t("settings_pokemon_price_source")).addDropdown((d) => {
@@ -3850,7 +4161,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
       d.setValue((_a = this.plugin.settings.pokemonPriceSource) != null ? _a : "tcgplayer");
       d.onChange(async (v) => {
         this.plugin.settings.pokemonPriceSource = v;
-        await this.plugin.saveSettings();
+        await this.plugin.saveSettings(true);
       });
     });
     const sponsorDiv = el.createDiv({ cls: "col-settings-sponsor" });
@@ -4222,9 +4533,16 @@ var CollectorsPlugin = class extends import_obsidian10.Plugin {
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
-  async saveSettings() {
+  async saveSettings(priceSourceChanged = false) {
     await this.saveData(this.settings);
     this.priceService.updateSettings(this.settings);
+    if (priceSourceChanged) {
+      for (const leaf of this.app.workspace.getLeavesOfType(COLLECTION_VIEW_TYPE)) {
+        if (leaf.view instanceof CollectionView) {
+          leaf.view.refreshPrices();
+        }
+      }
+    }
   }
   async activateDashboard() {
     const { workspace } = this.app;
