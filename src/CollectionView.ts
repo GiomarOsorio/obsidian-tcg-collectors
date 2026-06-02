@@ -44,6 +44,12 @@ export class CollectionView extends FileView {
   canAcceptExtension(ext: string) { return ext === 'collection'; }
 
   async onLoadFile(file: TFile) {
+    // Reset filter state so it doesn't bleed from a previous collection
+    this.filter       = 'all';
+    this.finishFilter = 'all';
+    this.sortBy       = 'number';
+    this.searchQuery  = '';
+
     this.collection = await parseCollectionFile(file, this.app.vault);
     this.render();
     if (this.collection && this.collection.format !== 'arena') {

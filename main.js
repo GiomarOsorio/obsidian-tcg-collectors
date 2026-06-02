@@ -3252,6 +3252,10 @@ var CollectionView = class extends import_obsidian7.FileView {
     return ext === "collection";
   }
   async onLoadFile(file) {
+    this.filter = "all";
+    this.finishFilter = "all";
+    this.sortBy = "number";
+    this.searchQuery = "";
     this.collection = await parseCollectionFile(file, this.app.vault);
     this.render();
     if (this.collection && this.collection.format !== "arena") {

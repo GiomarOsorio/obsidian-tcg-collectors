@@ -384,6 +384,26 @@
   accent-color: var(--interactive-accent);
 }
 
+/* Pokémon variant filter buttons */
+.col-finish-btn {
+  padding: 4px 10px;
+  border-radius: 14px;
+  border: 1.5px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.76em;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.col-finish-btn:hover { color: var(--text-normal); border-color: var(--interactive-accent); }
+.col-finish-btn-active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
 .col-sort-wrap {
   display: flex;
   align-items: center;
