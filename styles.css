@@ -1233,29 +1233,40 @@
   position: relative;
 }
 
-/* ── Pokémon Card Zoom Modal layout ──────────────────────────────────────────── */
-.pkmn-zoom-modal.modal-content {
+/* ── Pokémon Card Zoom overlay ────────────────────────────────────────────────── */
+.pkmn-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-modal, 300);
+  background: rgba(0, 0, 0, 0.88);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 16px;
-  min-height: 500px;
-  background: transparent;
-  overflow: visible;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: zoom-out;
 }
-.pkmn-zoom-wrapper {
+.pkmn-zoom-overlay.pkmn-zoom-active { opacity: 1; }
+/* .pkmn-zoom-modal is the direct parent of .card — used for CSS effect scoping */
+.pkmn-zoom-modal {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  cursor: default;
+  perspective: 800px;
 }
 .pkmn-zoom-modal .card {
-  width: 280px;
+  width: 260px;
+  display: block;
   cursor: pointer;
   user-select: none;
+  pointer-events: auto !important;
 }
 @media (min-width: 600px) {
   .pkmn-zoom-modal .card { width: 360px; }
+}
+@media (min-width: 900px) {
+  .pkmn-zoom-modal .card { width: 420px; }
 }
 /* Pokemon card effects — adapted from pokemon-cards-151 by @simeydotme (MIT) */
 /* https://github.com/simeydotme/pokemon-cards-151 */
