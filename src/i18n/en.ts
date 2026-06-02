@@ -191,6 +191,13 @@ export const en = {
   pokemon_set_load_failed:  'Failed to load sets.',
   pokemon_set_card_count:   '{count} cards',
   field_tcgdex_set_id:      'TCGdex set ID',
+  field_pokemon_variant:    'Print finish',
+  field_pokemon_variant_desc: 'Which variants to import from this set.',
+  pokemon_variant_all:      'All',
+  pokemon_variant_normal:   'Normal only',
+  pokemon_variant_reverse:  'Reverse Holo only',
+  pokemon_variant_holo:     'Holo only',
+  pokemon_variant_first_edition: '1st Edition only',
   field_tcgdex_set_id_desc: 'The TCGdex set identifier. Find it at tcgdex.dev.',
   field_tcgdex_set_id_ph:   'e.g. swsh1, sv10, base1',
 

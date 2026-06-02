@@ -12,6 +12,7 @@ export interface CollectionCard {
 }
 
 export type CollectionType = 'mtg-set' | 'mtg-theme' | 'pokemon-set';
+export type PokemonVariantImport = 'all' | 'normal' | 'reverse' | 'holo' | 'firstEdition';
 export type CollectionFormat = 'paper' | 'arena';
 
 export interface Collection {
@@ -20,6 +21,7 @@ export interface Collection {
   type: CollectionType;
   setCode?: string;
   tcgdexSetId?: string;
+  pokemonVariantImport?: PokemonVariantImport;
   scryfallQuery?: string;
   scryfallOrder?: string;
   autoUpdate: boolean;

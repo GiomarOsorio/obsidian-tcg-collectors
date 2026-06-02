@@ -56,6 +56,7 @@ async function parseCollectionFile(file, vault) {
   let pluginVersion;
   let collectionName = file.basename;
   let tcgdexSetId;
+  let pokemonVariantImport;
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (fmMatch) {
     const fmLines = fmMatch[1].split("\n");
@@ -99,6 +100,9 @@ async function parseCollectionFile(file, vault) {
         case "tcgdex-set-id":
           tcgdexSetId = val;
           break;
+        case "pokemon-variant-import":
+          pokemonVariantImport = val;
+          break;
       }
     }
   }
@@ -112,6 +116,7 @@ async function parseCollectionFile(file, vault) {
     format: collectionFormat,
     setCode,
     tcgdexSetId,
+    pokemonVariantImport,
     scryfallQuery,
     scryfallOrder,
     autoUpdate,
@@ -836,6 +841,13 @@ var en = {
   pokemon_set_load_failed: "Failed to load sets.",
   pokemon_set_card_count: "{count} cards",
   field_tcgdex_set_id: "TCGdex set ID",
+  field_pokemon_variant: "Print finish",
+  field_pokemon_variant_desc: "Which variants to import from this set.",
+  pokemon_variant_all: "All",
+  pokemon_variant_normal: "Normal only",
+  pokemon_variant_reverse: "Reverse Holo only",
+  pokemon_variant_holo: "Holo only",
+  pokemon_variant_first_edition: "1st Edition only",
   field_tcgdex_set_id_desc: "The TCGdex set identifier. Find it at tcgdex.dev.",
   field_tcgdex_set_id_ph: "e.g. swsh1, sv10, base1",
   // Pokémon notices
@@ -1001,6 +1013,13 @@ var es = {
   settings_pokemon_sponsor: "Desarrollado por TCGdex (c\xF3digo abierto)",
   settings_pokemon_sponsor_desc: "TCGdex provee datos y precios gratuitos de Pok\xE9mon. \xA1Considera patrocinar!",
   field_tcgdex_set_id: "ID del set de TCGdex",
+  field_pokemon_variant: "Acabado de impresi\xF3n",
+  field_pokemon_variant_desc: "Qu\xE9 variantes importar de este set.",
+  pokemon_variant_all: "Todas",
+  pokemon_variant_normal: "Solo Normal",
+  pokemon_variant_reverse: "Solo Reverse Holo",
+  pokemon_variant_holo: "Solo Holo",
+  pokemon_variant_first_edition: "Solo 1ra Edici\xF3n",
   field_tcgdex_set_id_desc: "El identificador del set en TCGdex. B\xFAscalo en tcgdex.dev.",
   field_tcgdex_set_id_ph: "ej. swsh1, sv10, base1",
   notice_fetching_pokemon: 'Obteniendo cartas de Pok\xE9mon para "{name}"\u2026',
@@ -2066,7 +2085,7 @@ var TYPE_LABELS = () => ({
 var TABLE_HEADER = "| Owned | Image | Name | Type | Rarity | Set | Number | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- |";
 var NewCollectionModal = class extends import_obsidian4.Modal {
   constructor(app, plugin, onCreated, editTarget) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     super(app);
     this.activeGame = "mtg";
     this.tabEls = /* @__PURE__ */ new Map();
@@ -2084,6 +2103,7 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
     // Pokémon form state
     this.tcgdexSetId = "";
     this.pokemonFormType = "catalog";
+    this.pokemonVariantImport = "all";
     this.plugin = plugin;
     this.onCreated = onCreated;
     if (editTarget) {
@@ -2100,6 +2120,7 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
       this.autoUpdate = c.autoUpdate;
       this.autoFetch = false;
       this.tcgdexSetId = (_h = c.tcgdexSetId) != null ? _h : "";
+      this.pokemonVariantImport = (_i = c.pokemonVariantImport) != null ? _i : "all";
     }
   }
   onOpen() {
@@ -2266,6 +2287,15 @@ var NewCollectionModal = class extends import_obsidian4.Modal {
       catalogBtn.removeClass("ncm-type-btn-active");
       customSection.style.display = "";
       catalogSection.style.display = "none";
+    });
+    new import_obsidian4.Setting(el).setName(t("field_pokemon_variant")).setDesc(t("field_pokemon_variant_desc")).addDropdown((d) => {
+      d.addOption("all", t("pokemon_variant_all"));
+      d.addOption("normal", t("pokemon_variant_normal"));
+      d.addOption("reverse", t("pokemon_variant_reverse"));
+      d.addOption("holo", t("pokemon_variant_holo"));
+      d.addOption("firstEdition", t("pokemon_variant_first_edition"));
+      d.setValue(this.pokemonVariantImport);
+      d.onChange((v) => this.pokemonVariantImport = v);
     });
     new import_obsidian4.Setting(el).addButton(
       (btn) => btn.setButtonText(this.editTarget ? t("btn_save") : t("btn_create")).setCta().onClick(() => this.editTarget ? this.savePokemon() : this.createPokemon())
@@ -2466,6 +2496,7 @@ ${TABLE_HEADER}
       `collection-type: pokemon-set`,
       `collection-name: ${yamlStr(this.name)}`,
       this.tcgdexSetId ? `tcgdex-set-id: ${this.tcgdexSetId}` : "",
+      this.pokemonVariantImport !== "all" ? `pokemon-variant-import: ${this.pokemonVariantImport}` : "",
       "---"
     ].filter(Boolean);
   }
@@ -2519,13 +2550,21 @@ ${TABLE_HEADER}
     }
   }
   async fetchAndPopulatePokemon(file, previousOwned) {
+    var _a;
     new import_obsidian4.Notice(t("notice_fetching_pokemon", { name: this.name }));
     try {
       const cards = await fetchPokemonSetCards(
         this.tcgdexSetId,
         (fetched, total) => new import_obsidian4.Notice(t("notice_fetching_pokemon_progress", { fetched, total }))
       );
-      const rawRows = cards.flatMap(pokemonCardToMarkdownRows);
+      const suffixMap = {
+        normal: "_n",
+        reverse: "_r",
+        holo: "_h",
+        firstEdition: "_fe"
+      };
+      const targetSuffix = (_a = suffixMap[this.pokemonVariantImport]) != null ? _a : null;
+      const rawRows = cards.flatMap(pokemonCardToMarkdownRows).filter((row) => !targetSuffix || row.includes(`${targetSuffix}">`));
       const rows = previousOwned ? applyOwnedStates(rawRows, previousOwned) : rawRows;
       if (previousOwned) {
         await clearCardRows(file, this.app.vault);
