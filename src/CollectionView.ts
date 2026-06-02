@@ -3,6 +3,8 @@ import type CollectorsPlugin from './main';
 import { Collection, CollectionCard, SortBy } from './types';
 import { parseCollectionFile, setCardCount, appendCards, patchFrontmatter } from './parser';
 import { openCardZoom } from './CardZoomModal';
+import { openPokemonCardZoom } from './PokemonCardZoomModal';
+import { fetchPokemonCard } from './TCGDexService';
 import { NewCollectionModal } from './NewCollectionModal';
 import { CardSearchModal } from './CardSearchModal';
 import {
@@ -22,7 +24,11 @@ export function getCardVariant(card: CollectionCard): 'foil' | 'nonfoil' | 'reve
 }
 
 type Filter = 'all' | 'owned' | 'missing';
-type FinishFilter = 'all' | 'foil' | 'nonfoil' | 'reverse' | 'holo' | 'firstEdition';
+type FinishFilter =
+  | 'all'
+  | 'foil' | 'nonfoil' | 'reverse' | 'holo' | 'firstEdition'
+  | 'rareHolo' | 'radiantRare' | 'illustrationRare' | 'doubleRare'
+  | 'ultraRare' | 'specialIllustrationRare' | 'hyperRare' | 'rainbowAlt';
 
 export class CollectionView extends FileView {
   plugin: CollectorsPlugin;
@@ -69,6 +75,19 @@ export class CollectionView extends FileView {
     if (this.collection && this.collection.format !== 'arena') {
       await this.fetchPricesForCollection(this.collection);
     }
+  }
+
+  async refreshPrices() {
+    if (!this.collection || this.collection.format === 'arena') return;
+    this.showLoading(t('loading_prices'));
+    if (this.collection.type === 'pokemon-set') {
+      await this.plugin.priceService.fetchPokemonPrices(this.collection.cards.map(c => c.id));
+    } else {
+      const ids = this.collection.cards.map(c => ({ set: c.set.toLowerCase(), collector_number: c.number }));
+      await this.plugin.priceService.fetchPrices(ids, s => this.showLoading(t('loading_rate_limited', { seconds: s })));
+    }
+    this.hideLoading();
+    this.render();
   }
 
   private async fetchPricesForCollection(coll: Collection): Promise<void> {
@@ -203,13 +222,23 @@ export class CollectionView extends FileView {
 
     if (coll.type === 'pokemon-set') {
       const pokemonVariants: Array<{ value: FinishFilter; label: string }> = [
-        { value: 'all',          label: t('filter_all') },
-        { value: 'nonfoil',      label: t('variant_normal') },
-        { value: 'reverse',      label: t('variant_reverse_holo') },
-        { value: 'holo',         label: t('variant_holo') },
-        { value: 'firstEdition', label: t('variant_first_edition') },
+        { value: 'all',                    label: t('filter_all') },
+        { value: 'nonfoil',                label: t('variant_normal') },
+        { value: 'reverse',                label: t('variant_reverse_holo') },
+        { value: 'holo',                   label: t('variant_holo') },
+        { value: 'firstEdition',           label: t('variant_first_edition') },
+        { value: 'rareHolo',               label: t('rarity_rare_holo') },
+        { value: 'radiantRare',            label: t('rarity_radiant_rare') },
+        { value: 'illustrationRare',       label: t('rarity_illustration_rare') },
+        { value: 'doubleRare',             label: t('rarity_double_rare') },
+        { value: 'ultraRare',              label: t('rarity_ultra_rare') },
+        { value: 'specialIllustrationRare', label: t('rarity_special_illustration_rare') },
+        { value: 'hyperRare',              label: t('rarity_hyper_rare') },
+        { value: 'rainbowAlt',             label: t('rarity_rainbow_alt') },
       ];
-      const variantWrap = row2.createDiv({ cls: 'col-finish-wrap col-variant-wrap' });
+      // Own row so 13 buttons don't overflow into tabs/sort area
+      const variantRow = controls.createDiv({ cls: 'col-controls-row col-variant-row' });
+      const variantWrap = variantRow.createDiv({ cls: 'col-finish-wrap col-variant-wrap' });
       for (const v of pokemonVariants) {
         const btn = variantWrap.createEl('button', {
           cls: `col-finish-btn${this.finishFilter === v.value ? ' col-finish-btn-active' : ''}`,
@@ -317,7 +346,24 @@ export class CollectionView extends FileView {
     const filtered = coll.cards.filter(card => {
       if (this.filter === 'owned'   &&  !card.owned) return false;
       if (this.filter === 'missing' &&   card.owned) return false;
-      if (this.finishFilter !== 'all' && getCardVariant(card) !== this.finishFilter) return false;
+      if (this.finishFilter !== 'all') {
+        const rarityFilterMap: Partial<Record<FinishFilter, string>> = {
+          rareHolo:               'Rare Holo',
+          radiantRare:            'Radiant rare',
+          illustrationRare:       'Illustration rare',
+          doubleRare:             'Double rare',
+          ultraRare:              'Ultra Rare',
+          specialIllustrationRare:'Special illustration rare',
+          hyperRare:              'Hyper rare',
+          rainbowAlt:             'Rare Rainbow alt',
+        };
+        const rarityTarget = rarityFilterMap[this.finishFilter];
+        if (rarityTarget) {
+          if (card.rarity.toLowerCase() !== rarityTarget.toLowerCase()) return false;
+        } else {
+          if (getCardVariant(card) !== this.finishFilter) return false;
+        }
+      }
       if (this.searchQuery) return card.name.toLowerCase().includes(this.searchQuery.toLowerCase());
       return true;
     });
@@ -389,7 +435,15 @@ export class CollectionView extends FileView {
         img.style.display = 'none';
         imgWrap.createEl('div', { cls: 'col-tile-img-fallback', text: card.name[0] ?? '?' });
       });
-      tile.addEventListener('click', () => openCardZoom(card.imageUrl, card.name, isFoil));
+      tile.addEventListener('click', async () => {
+        if (coll.type === 'pokemon-set') {
+          const baseId = card.id.replace(/_[nrhf]e?$/, '');
+          const tcgCard = await fetchPokemonCard(baseId) ?? undefined;
+          openPokemonCardZoom(card, tcgCard);
+        } else {
+          openCardZoom(card.imageUrl, card.name, isFoil);
+        }
+      });
     } else {
       tile.createDiv({ cls: 'col-tile-img-fallback', text: card.name[0] ?? '?' });
     }

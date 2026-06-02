@@ -410,11 +410,19 @@ export class NewCollectionModal extends Modal {
       .setName(t('field_pokemon_variant'))
       .setDesc(t('field_pokemon_variant_desc'))
       .addDropdown(d => {
-        d.addOption('all',          t('pokemon_variant_all'));
-        d.addOption('normal',       t('pokemon_variant_normal'));
-        d.addOption('reverse',      t('pokemon_variant_reverse'));
-        d.addOption('holo',         t('pokemon_variant_holo'));
-        d.addOption('firstEdition', t('pokemon_variant_first_edition'));
+        d.addOption('all',                     t('pokemon_variant_all'));
+        d.addOption('normal',                  t('pokemon_variant_normal'));
+        d.addOption('reverse',                 t('pokemon_variant_reverse'));
+        d.addOption('holo',                    t('pokemon_variant_holo'));
+        d.addOption('firstEdition',            t('pokemon_variant_first_edition'));
+        d.addOption('rareHolo',                t('pokemon_variant_rare_holo'));
+        d.addOption('radiantRare',             t('pokemon_variant_radiant_rare'));
+        d.addOption('illustrationRare',        t('pokemon_variant_illustration_rare'));
+        d.addOption('doubleRare',              t('pokemon_variant_double_rare'));
+        d.addOption('ultraRare',               t('pokemon_variant_ultra_rare'));
+        d.addOption('specialIllustrationRare', t('pokemon_variant_special_illustration_rare'));
+        d.addOption('hyperRare',               t('pokemon_variant_hyper_rare'));
+        d.addOption('rainbowAlt',              t('pokemon_variant_rainbow_alt'));
         d.setValue(this.pokemonVariantImport);
         d.onChange(v => (this.pokemonVariantImport = v as PokemonVariantImport));
       });
@@ -721,9 +729,24 @@ export class NewCollectionModal extends Modal {
       const suffixMap: Record<string, string> = {
         normal: '_n', reverse: '_r', holo: '_h', firstEdition: '_fe',
       };
-      const targetSuffix = suffixMap[this.pokemonVariantImport] ?? null;
+      const rarityImportMap: Record<string, string> = {
+        rareHolo:               'Rare Holo',
+        radiantRare:            'Radiant rare',
+        illustrationRare:       'Illustration rare',
+        doubleRare:             'Double rare',
+        ultraRare:              'Ultra Rare',
+        specialIllustrationRare:'Special illustration rare',
+        hyperRare:              'Hyper rare',
+        rainbowAlt:             'Rare Rainbow alt',
+      };
+      const targetSuffix  = suffixMap[this.pokemonVariantImport] ?? null;
+      const targetRarity  = rarityImportMap[this.pokemonVariantImport] ?? null;
       const rawRows = cards.flatMap(pokemonCardToMarkdownRows)
-        .filter(row => !targetSuffix || row.includes(`${targetSuffix}">`));
+        .filter(row => {
+          if (targetSuffix) return row.includes(`${targetSuffix}">`);
+          if (targetRarity) return row.toLowerCase().includes(`| ${targetRarity.toLowerCase()} |`);
+          return true;
+        });
       const rows = previousOwned ? applyOwnedStates(rawRows, previousOwned) : rawRows;
 
       if (previousOwned) {

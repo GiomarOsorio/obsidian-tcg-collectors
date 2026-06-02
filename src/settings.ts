@@ -142,7 +142,7 @@ export class CollectorsSettingTab extends PluginSettingTab {
         updateVisibility(this.plugin.settings.priceSource);
         d.onChange(async v => {
           this.plugin.settings.priceSource = v as PriceSource;
-          await this.plugin.saveSettings();
+          await this.plugin.saveSettings(true);
           updateVisibility(v as PriceSource);
         });
       });
@@ -204,6 +204,19 @@ export class CollectorsSettingTab extends PluginSettingTab {
           })
       );
 
+    // ── Card Data ────────────────────────────────────────────────────────────
+    this.sectionTitle(el, t('settings_section_card_data'));
+    this.sectionDesc(el, t('settings_card_data_desc'));
+
+    new Setting(el)
+      .setName(t('settings_source'))
+      .addDropdown(d => {
+        d.addOption('tcgdex', 'TCGdex');
+        d.setValue('tcgdex');
+        d.setDisabled(true);
+      });
+
+    // ── Prices ───────────────────────────────────────────────────────────────
     this.sectionTitle(el, t('settings_section_prices'));
     this.sectionDesc(el, t('settings_pokemon_price_source_desc'));
 
@@ -215,7 +228,7 @@ export class CollectorsSettingTab extends PluginSettingTab {
         d.setValue(this.plugin.settings.pokemonPriceSource ?? 'tcgplayer');
         d.onChange(async v => {
           this.plugin.settings.pokemonPriceSource = v as 'tcgplayer' | 'cardmarket';
-          await this.plugin.saveSettings();
+          await this.plugin.saveSettings(true);
         });
       });
 

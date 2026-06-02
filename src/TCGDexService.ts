@@ -27,6 +27,14 @@ export interface TCGDexCardBrief {
   image?: string;
 }
 
+interface TCGDexPriceVariant {
+  lowPrice?: number | null;
+  midPrice?: number | null;
+  highPrice?: number | null;
+  marketPrice?: number | null;
+  directLowPrice?: number | null;
+}
+
 export interface TCGDexCard {
   id: string;
   localId: string;
@@ -35,6 +43,9 @@ export interface TCGDexCard {
   category: string;
   types?: string[];
   rarity?: string;
+  stage?: string;
+  suffix?: string;
+  trainerType?: string;
   set: { id: string; name: string };
   variants?: {
     normal: boolean;
@@ -42,17 +53,29 @@ export interface TCGDexCard {
     holo: boolean;
     firstEdition: boolean;
   };
-  tcgplayer?: {
-    normal?:                    { marketPrice?: number | null };
-    'reverse-holofoil'?:        { marketPrice?: number | null };
-    holofoil?:                  { marketPrice?: number | null };
-    '1st-edition-holofoil'?:   { marketPrice?: number | null };
-  };
-  cardmarket?: {
-    trend?:        number | null;
-    avg?:          number | null;
-    'trend-holo'?: number | null;
-    'avg-holo'?:   number | null;
+  // pricing is nested under `pricing` in the TCGdex v2 API
+  pricing?: {
+    tcgplayer?: {
+      unit?: string;
+      normal?:               TCGDexPriceVariant;
+      reverse?:              TCGDexPriceVariant;
+      'reverse-holofoil'?:   TCGDexPriceVariant;
+      holofoil?:             TCGDexPriceVariant;
+      '1st-edition'?:        TCGDexPriceVariant;
+      '1st-edition-holofoil'?: TCGDexPriceVariant;
+      unlimited?:            TCGDexPriceVariant;
+    };
+    cardmarket?: {
+      unit?: string;
+      avg?: number | null;
+      low?: number | null;
+      trend?: number | null;
+      'avg-holo'?: number | null;
+      'low-holo'?: number | null;
+      'trend-holo'?: number | null;
+      avg1?: number | null;  avg7?: number | null;  avg30?: number | null;
+      'avg1-holo'?: number | null; 'avg7-holo'?: number | null; 'avg30-holo'?: number | null;
+    };
   };
 }
 
@@ -151,19 +174,20 @@ export function pokemonCardToMarkdownRows(card: TCGDexCard): string[] {
 }
 
 export function getTCGPlayerPrice(card: TCGDexCard, suffix: string): number | null {
-  const t = card.tcgplayer;
+  const t = card.pricing?.tcgplayer;
   if (!t) return null;
   switch (suffix) {
     case '_n':  return t.normal?.marketPrice ?? null;
-    case '_r':  return t['reverse-holofoil']?.marketPrice ?? null;
+    // TCGdex API uses 'reverse' in practice; 'reverse-holofoil' in docs
+    case '_r':  return t.reverse?.marketPrice ?? t['reverse-holofoil']?.marketPrice ?? null;
     case '_h':  return t.holofoil?.marketPrice ?? null;
-    case '_fe': return t['1st-edition-holofoil']?.marketPrice ?? t.holofoil?.marketPrice ?? null;
+    case '_fe': return t['1st-edition-holofoil']?.marketPrice ?? t['1st-edition']?.marketPrice ?? t.holofoil?.marketPrice ?? null;
     default:    return null;
   }
 }
 
 export function getCardmarketPrice(card: TCGDexCard, suffix: string): number | null {
-  const cm = card.cardmarket;
+  const cm = card.pricing?.cardmarket;
   if (!cm) return null;
   if (suffix === '_h') {
     return cm['trend-holo'] ?? cm['avg-holo'] ?? cm.trend ?? null;

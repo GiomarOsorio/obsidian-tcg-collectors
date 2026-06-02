@@ -197,7 +197,15 @@ export const en = {
   pokemon_variant_normal:   'Normal only',
   pokemon_variant_reverse:  'Reverse Holo only',
   pokemon_variant_holo:     'Holo only',
-  pokemon_variant_first_edition: '1st Edition only',
+  pokemon_variant_first_edition:            '1st Edition only',
+  pokemon_variant_rare_holo:                'Rare Holo only',
+  pokemon_variant_radiant_rare:             'Radiant Rare only',
+  pokemon_variant_illustration_rare:        'Illustration Rare only',
+  pokemon_variant_double_rare:              'Double Rare only',
+  pokemon_variant_ultra_rare:               'Ultra Rare only',
+  pokemon_variant_special_illustration_rare:'Special Illust. Rare only',
+  pokemon_variant_hyper_rare:               'Hyper Rare only',
+  pokemon_variant_rainbow_alt:              'Rainbow Alt only',
   field_tcgdex_set_id_desc: 'The TCGdex set identifier. Find it at tcgdex.dev.',
   field_tcgdex_set_id_ph:   'e.g. swsh1, sv10, base1',
 
@@ -214,6 +222,16 @@ export const en = {
   variant_reverse_holo:   '↺ Reverse Holo',
   variant_holo:           '✦ Holo',
   variant_first_edition:  '① 1st Edition',
+
+  // Pokémon rarity filter buttons
+  rarity_rare_holo:                 '★ Rare Holo',
+  rarity_radiant_rare:              '✦ Radiant Rare',
+  rarity_illustration_rare:         '◈ Illust. Rare',
+  rarity_double_rare:               '★★ Double Rare',
+  rarity_ultra_rare:                '◉ Ultra Rare',
+  rarity_special_illustration_rare: '◈◈ Special Illust.',
+  rarity_hyper_rare:                '⬡ Hyper Rare',
+  rarity_rainbow_alt:               '🌈 Rainbow Alt',
 } as const;
 
 export type I18nKey = keyof typeof en;
