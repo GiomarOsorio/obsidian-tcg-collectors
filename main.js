@@ -22,7 +22,7 @@ __export(main_exports, {
   default: () => CollectorsPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian10 = require("obsidian");
+var import_obsidian11 = require("obsidian");
 
 // src/DashboardView.ts
 var import_obsidian5 = require("obsidian");
@@ -2976,7 +2976,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
 };
 
 // src/CollectionView.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // src/CardZoomModal.ts
 function clamp(v, min = 0, max = 100) {
@@ -3056,19 +3056,190 @@ function openCardZoom(imageUrl, name, isFoil) {
   });
 }
 
-// src/CardSearchModal.ts
+// src/PokemonCardZoomModal.ts
 var import_obsidian6 = require("obsidian");
+var BACK_URL = "https://tcg.pokemon.com/assets/img/global/tcg-card-back-2x.jpg";
+var CDN = "https://poke-holo.b-cdn.net";
+function getCardSuffix(id) {
+  const m = id.match(/_([nrhf]e?)$/);
+  return m ? `_${m[1]}` : "_n";
+}
+function mapRarity(rarity, suffix) {
+  if (suffix === "_r") return "pokeball holo";
+  const r = (rarity != null ? rarity : "").toLowerCase().trim();
+  if (r.includes("hyper rare")) return "hyper rare";
+  if (r.includes("special illustration rare")) return "special illustration rare";
+  if (r.includes("illustration rare")) return "illustration rare";
+  if (r.includes("ultra rare")) return "ultra rare";
+  if (r.includes("double rare")) return "double rare";
+  if (r.includes("radiant rare")) return "radiant rare";
+  if (r.includes("rare holo") || r === "rare") return "rare holo";
+  if (r.includes("uncommon")) return "uncommon";
+  return "common";
+}
+function detectSupertype(typeStr) {
+  const l = typeStr.toLowerCase();
+  if (l === "trainer" || l.includes("item") || l.includes("supporter") || l.includes("stadium")) {
+    return "trainer";
+  }
+  if (l === "energy") return "energy";
+  return "pok\xE9mon";
+}
+function getTypeClasses(typeStr) {
+  const known = /* @__PURE__ */ new Set(["grass", "fire", "water", "lightning", "psychic", "fighting", "darkness", "metal", "dragon", "fairy", "colorless"]);
+  return typeStr.toLowerCase().split("/").map((t2) => t2.trim()).filter((t2) => known.has(t2)).join(" ");
+}
+function getFoilUrl(setId, localId, suffix) {
+  if (suffix === "_n") return null;
+  const foilSuffix = suffix === "_r" ? "ph" : "std";
+  const cdnSetId = setId.replace(/([a-z])pt(\d)/g, "$1-$2");
+  const num = parseInt(localId);
+  const paddedNum = isNaN(num) ? localId : num.toString().padStart(3, "0");
+  return `${CDN}/foils/${cdnSetId}_en_${paddedNum}_${foilSuffix}.foil.webp`;
+}
+function openPokemonCardZoom(app, card) {
+  new PokemonCardZoomModal(app, card).open();
+}
+var PokemonCardZoomModal = class extends import_obsidian6.Modal {
+  constructor(app, card) {
+    super(app);
+    this.cardEl = null;
+    this.rafId = 0;
+    // Lerped current values
+    this.cur = { rx: 0, ry: 0, px: 50, py: 50, op: 0, bx: 50, by: 50 };
+    // Target values driven by pointer
+    this.tgt = { rx: 0, ry: 0, px: 50, py: 50, op: 0, bx: 50, by: 50 };
+    // ── Animation loop ─────────────────────────────────────────────────────────
+    this.tick = () => {
+      if (!this.cardEl) return;
+      const L = 0.12, c = this.cur, t2 = this.tgt;
+      c.rx += (t2.rx - c.rx) * L;
+      c.ry += (t2.ry - c.ry) * L;
+      c.px += (t2.px - c.px) * L;
+      c.py += (t2.py - c.py) * L;
+      c.op += (t2.op - c.op) * L;
+      c.bx += (t2.bx - c.bx) * L;
+      c.by += (t2.by - c.by) * L;
+      this.applyVars(this.cardEl);
+      this.rafId = requestAnimationFrame(this.tick);
+    };
+    this.card = card;
+  }
+  onOpen() {
+    const { contentEl, modalEl } = this;
+    contentEl.addClass("pkmn-zoom-modal");
+    contentEl.empty();
+    modalEl.style.background = "rgba(0,0,0,0.85)";
+    modalEl.style.boxShadow = "none";
+    const card = this.card;
+    const suffix = getCardSuffix(card.id);
+    const rarity = mapRarity(card.rarity, suffix);
+    const supertype = detectSupertype(card.type);
+    const typeClass = getTypeClasses(card.type);
+    const foilUrl = getFoilUrl(card.set, card.number, suffix);
+    const wrapper = contentEl.createDiv({ cls: "pkmn-zoom-wrapper" });
+    wrapper.addEventListener("click", (e) => {
+      if (e.target === wrapper) this.close();
+    });
+    const cardEl = document.createElement("div");
+    cardEl.className = ["card", "interactive", typeClass].filter(Boolean).join(" ");
+    cardEl.dataset.rarity = rarity;
+    cardEl.dataset.supertype = supertype;
+    cardEl.dataset.subtypes = "basic";
+    cardEl.dataset.set = card.set;
+    cardEl.dataset.number = card.number;
+    cardEl.dataset.trainerGallery = "false";
+    wrapper.appendChild(cardEl);
+    this.applyVars(cardEl);
+    const translater = cardEl.createDiv({ cls: "card__translater" });
+    const rotator = translater.createEl("button", { cls: "card__rotator" });
+    rotator.setAttribute("aria-label", card.name);
+    rotator.createEl("img", {
+      cls: "card__back",
+      attr: { src: BACK_URL, alt: "Card back", loading: "lazy" }
+    });
+    const front = rotator.createDiv({ cls: "card__front" });
+    if (foilUrl) {
+      front.style.cssText = `--foil:url(${foilUrl});--mask:url(${foilUrl})`;
+    }
+    cardEl.addClass("loading");
+    const img = front.createEl("img", { attr: { src: card.imageUrl, alt: card.name, loading: "eager" } });
+    img.onload = () => {
+      cardEl.removeClass("loading");
+      if (foilUrl) cardEl.addClass("masked");
+    };
+    img.onerror = () => cardEl.removeClass("loading");
+    for (const cls of ["card__shine", "card__glitter", "card__glare", "card__glare2"]) {
+      front.createDiv({ cls });
+    }
+    this.cardEl = cardEl;
+    this.attachPointer(cardEl);
+    this.rafId = requestAnimationFrame(this.tick);
+  }
+  onClose() {
+    cancelAnimationFrame(this.rafId);
+    this.cardEl = null;
+    this.contentEl.empty();
+  }
+  applyVars(el) {
+    if (!el) return;
+    const { rx, ry, px, py, op, bx, by } = this.cur;
+    const dx = (px - 50) / 50;
+    const dy = (py - 50) / 50;
+    const dist = Math.min(Math.sqrt(dx * dx + dy * dy), 1);
+    el.style.setProperty("--rotate-x", `${rx}deg`);
+    el.style.setProperty("--rotate-y", `${ry}deg`);
+    el.style.setProperty("--pointer-x", `${px}%`);
+    el.style.setProperty("--pointer-y", `${py}%`);
+    el.style.setProperty("--card-opacity", `${op}`);
+    el.style.setProperty("--background-x", `${bx}%`);
+    el.style.setProperty("--background-y", `${by}%`);
+    el.style.setProperty("--pointer-from-center", `${dist}`);
+    el.style.setProperty("--pointer-from-top", `${py / 100}`);
+    el.style.setProperty("--pointer-from-left", `${px / 100}`);
+    el.style.setProperty("--card-scale", "1");
+    el.style.setProperty("--translate-x", "0px");
+    el.style.setProperty("--translate-y", "0px");
+    el.style.setProperty("--rotate-delta", "0");
+    el.style.setProperty("--seedx", "0.5");
+    el.style.setProperty("--seedy", "0.5");
+  }
+  attachPointer(el) {
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width * 100;
+      const y = (e.clientY - r.top) / r.height * 100;
+      this.tgt.rx = (x - 50) * 0.35;
+      this.tgt.ry = (y - 50) * -0.35;
+      this.tgt.px = x;
+      this.tgt.py = y;
+      const dx = (x - 50) / 50, dy = (y - 50) / 50;
+      const dist = Math.min(Math.sqrt(dx * dx + dy * dy), 1);
+      this.tgt.op = 0.3 + dist * 0.5;
+      this.tgt.bx = 40 + x / 100 * 20;
+      this.tgt.by = 40 + y / 100 * 20;
+      el.classList.add("interacting");
+    });
+    el.addEventListener("pointerleave", () => {
+      Object.assign(this.tgt, { rx: 0, ry: 0, px: 50, py: 50, op: 0, bx: 50, by: 50 });
+      el.classList.remove("interacting");
+    });
+  }
+};
+
+// src/CardSearchModal.ts
+var import_obsidian7 = require("obsidian");
 var API3 = "https://api.scryfall.com";
 async function autocomplete(q) {
   if (q.length < 2) return [];
-  const res = await (0, import_obsidian6.requestUrl)({ url: `${API3}/cards/autocomplete?q=${encodeURIComponent(q)}` });
+  const res = await (0, import_obsidian7.requestUrl)({ url: `${API3}/cards/autocomplete?q=${encodeURIComponent(q)}` });
   if (res.status < 200 || res.status >= 300) return [];
   const data = res.json;
   return data.data.slice(0, 10);
 }
 async function fetchPrintings(name) {
   const q = encodeURIComponent(`!"${name}"`);
-  const res = await (0, import_obsidian6.requestUrl)({
+  const res = await (0, import_obsidian7.requestUrl)({
     url: `${API3}/cards/search?q=${q}&unique=prints&order=released&dir=asc`,
     headers: { Accept: "application/json" }
   });
@@ -3076,7 +3247,7 @@ async function fetchPrintings(name) {
   const data = res.json;
   return data.data;
 }
-var CardSearchModal = class extends import_obsidian6.Modal {
+var CardSearchModal = class extends import_obsidian7.Modal {
   constructor(app, collection, onAdded) {
     super(app);
     this.query = "";
@@ -3208,9 +3379,9 @@ var CardSearchModal = class extends import_obsidian6.Modal {
       if (matchRow) rows.push(matchRow);
     }
     const file = this.app.vault.getAbstractFileByPath(this.collection.path);
-    if (!(file instanceof import_obsidian6.TFile)) return;
+    if (!(file instanceof import_obsidian7.TFile)) return;
     const added = await appendCards(file, rows, this.app.vault);
-    new import_obsidian6.Notice(
+    new import_obsidian7.Notice(
       added > 0 ? t("notice_cards_added_csm", { count: added, name: this.collection.name }) : t("notice_already_in_coll")
     );
     this.close();
@@ -3227,7 +3398,7 @@ function getCardVariant(card) {
   if (card.id.endsWith("_fe")) return "firstEdition";
   return "nonfoil";
 }
-var CollectionView = class extends import_obsidian7.FileView {
+var CollectionView = class extends import_obsidian8.FileView {
   constructor(leaf, plugin) {
     super(leaf);
     this.collection = null;
@@ -3372,7 +3543,7 @@ var CollectionView = class extends import_obsidian7.FileView {
     editBtn.innerHTML = "\u270E";
     editBtn.addEventListener("click", () => {
       const file = this.app.vault.getAbstractFileByPath(coll.path);
-      if (!(file instanceof import_obsidian7.TFile)) return;
+      if (!(file instanceof import_obsidian8.TFile)) return;
       new NewCollectionModal(this.app, this.plugin, () => this.reload(), { collection: coll, file }).open();
     });
     this.renderDetailHero(root, coll);
@@ -3561,7 +3732,13 @@ var CollectionView = class extends import_obsidian7.FileView {
         img.style.display = "none";
         imgWrap.createEl("div", { cls: "col-tile-img-fallback", text: (_a2 = card.name[0]) != null ? _a2 : "?" });
       });
-      tile.addEventListener("click", () => openCardZoom(card.imageUrl, card.name, isFoil));
+      tile.addEventListener("click", () => {
+        if (coll.type === "pokemon-set") {
+          openPokemonCardZoom(this.app, card);
+        } else {
+          openCardZoom(card.imageUrl, card.name, isFoil);
+        }
+      });
     } else {
       tile.createDiv({ cls: "col-tile-img-fallback", text: (_a = card.name[0]) != null ? _a : "?" });
     }
@@ -3605,7 +3782,7 @@ var CollectionView = class extends import_obsidian7.FileView {
       clearTimeout(this.saveTimers.get(card.id));
       this.saveTimers.set(card.id, setTimeout(async () => {
         const file = this.app.vault.getAbstractFileByPath(coll.path);
-        if (file instanceof import_obsidian7.TFile) await setCardCount(file, card.id, card.count, this.app.vault);
+        if (file instanceof import_obsidian8.TFile) await setCardCount(file, card.id, card.count, this.app.vault);
         this.saveTimers.delete(card.id);
       }, 400));
     };
@@ -3651,7 +3828,7 @@ var CollectionView = class extends import_obsidian7.FileView {
   // ── Scryfall update ──────────────────────────────────────────────────────────
   async updateFromScryfall(coll) {
     var _a, _b;
-    new import_obsidian7.Notice(t("notice_fetching_for", { name: coll.name }));
+    new import_obsidian8.Notice(t("notice_fetching_for", { name: coll.name }));
     try {
       const finish = (_a = coll.finishImport) != null ? _a : "all";
       const unique = coll.allPrints === false ? "cards" : "prints";
@@ -3665,16 +3842,16 @@ var CollectionView = class extends import_obsidian7.FileView {
       );
       const cards = finish === "all" ? rawCards : rawCards.map((c) => ({ ...c, finishes: c.finishes.filter((f) => f === finish) })).filter((c) => c.finishes.length > 0);
       const file = this.app.vault.getAbstractFileByPath(coll.path);
-      if (!(file instanceof import_obsidian7.TFile)) return;
+      if (!(file instanceof import_obsidian8.TFile)) return;
       const rows = cards.flatMap(cardToMarkdownRows);
       const added = await appendCards(file, rows, this.app.vault);
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
       await patchFrontmatter(file, "last-fetched", today, this.app.vault);
-      new import_obsidian7.Notice(
+      new import_obsidian8.Notice(
         added > 0 ? t("notice_cards_added", { count: added, name: coll.name }) : t("notice_up_to_date", { name: coll.name })
       );
     } catch (e) {
-      new import_obsidian7.Notice(t("notice_scryfall_failed", { error: e.message }));
+      new import_obsidian8.Notice(t("notice_scryfall_failed", { error: e.message }));
     }
   }
 };
@@ -3694,7 +3871,7 @@ var DEFAULT_SETTINGS = {
 };
 
 // src/settings.ts
-var import_obsidian8 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 var TABS = () => [
   { id: "general", icon: "\u2699", label: t("settings_tab_general") },
   { id: "mtg", icon: "\u2726", label: t("settings_tab_mtg") },
@@ -3702,7 +3879,7 @@ var TABS = () => [
   { id: "onepiece", icon: "\u2620", label: t("settings_tab_onepiece") },
   { id: "yugioh", icon: "\u{1F441}", label: t("settings_tab_yugioh") }
 ];
-var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
+var CollectorsSettingTab = class extends import_obsidian9.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.activeTab = "general";
@@ -3748,7 +3925,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
   // ── General ───────────────────────────────────────────────────────────────────
   buildGeneral(el) {
     this.sectionTitle(el, t("settings_section_collections"));
-    new import_obsidian8.Setting(el).setName(t("settings_folder")).setDesc(t("settings_folder_desc")).addText(
+    new import_obsidian9.Setting(el).setName(t("settings_folder")).setDesc(t("settings_folder_desc")).addText(
       (tx) => tx.setPlaceholder(t("settings_folder_ph")).setValue(this.plugin.settings.collectionsFolder).onChange(async (v) => {
         this.plugin.settings.collectionsFolder = v.trim();
         await this.plugin.saveSettings();
@@ -3761,7 +3938,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
       this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
     }
     this.sectionTitle(el, t("settings_tab_mtg"));
-    new import_obsidian8.Setting(el).setName(t("settings_enable_game", { game: "Magic: The Gathering" })).setDesc(t("settings_enable_game_desc")).addToggle(
+    new import_obsidian9.Setting(el).setName(t("settings_enable_game", { game: "Magic: The Gathering" })).setDesc(t("settings_enable_game_desc")).addToggle(
       (tx) => {
         var _a;
         return tx.setValue((_a = this.plugin.settings.enabledGames["mtg"]) != null ? _a : true).onChange(async (v) => {
@@ -3772,7 +3949,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
     );
     this.sectionTitle(el, t("settings_section_card_data"));
     this.sectionDesc(el, t("settings_card_data_desc"));
-    new import_obsidian8.Setting(el).setName(t("settings_source")).addDropdown((d) => {
+    new import_obsidian9.Setting(el).setName(t("settings_source")).addDropdown((d) => {
       d.addOption("scryfall", "Scryfall");
       d.setValue("scryfall");
       d.setDisabled(true);
@@ -3785,7 +3962,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
       tcgSection.toggleClass("col-settings-sub-active", source === "tcgplayer");
       cmSection.toggleClass("col-settings-sub-active", source === "cardmarket");
     };
-    new import_obsidian8.Setting(el).setName(t("settings_provider")).addDropdown((d) => {
+    new import_obsidian9.Setting(el).setName(t("settings_provider")).addDropdown((d) => {
       d.addOption("scryfall-usd", t("settings_price_scryfall_usd"));
       d.addOption("scryfall-eur", t("settings_price_scryfall_eur"));
       d.addOption("tcgplayer", t("settings_price_tcgplayer"));
@@ -3800,7 +3977,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
     });
     this.sectionTitle(tcgSection, t("settings_section_tcgplayer"));
     this.sectionDesc(tcgSection, t("settings_tcgplayer_desc"));
-    new import_obsidian8.Setting(tcgSection).setName(t("settings_tcgplayer_key")).setDesc(t("settings_tcgplayer_key_desc")).addText(
+    new import_obsidian9.Setting(tcgSection).setName(t("settings_tcgplayer_key")).setDesc(t("settings_tcgplayer_key_desc")).addText(
       (tx) => tx.setPlaceholder(t("settings_tcgplayer_ph")).setValue(this.plugin.settings.tcgplayerKey).onChange(async (v) => {
         this.plugin.settings.tcgplayerKey = v.trim();
         await this.plugin.saveSettings();
@@ -3814,7 +3991,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
       ["cardmarketAccessToken", "settings_cm_access_token", "settings_cm_access_token"],
       ["cardmarketAccessSecret", "settings_cm_access_secret", "settings_cm_access_secret"]
     ]) {
-      new import_obsidian8.Setting(cmSection).setName(t(labelKey)).addText(
+      new import_obsidian9.Setting(cmSection).setName(t(labelKey)).addText(
         (tx) => tx.setPlaceholder(t(phKey)).setValue(this.plugin.settings[key]).onChange(async (v) => {
           this.plugin.settings[key] = v.trim();
           await this.plugin.saveSettings();
@@ -3828,7 +4005,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
       this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
     }
     this.sectionTitle(el, "\u26A1  Pok\xE9mon");
-    new import_obsidian8.Setting(el).setName(t("settings_enable_game", { game: "Pok\xE9mon" })).setDesc(t("settings_enable_game_desc")).addToggle(
+    new import_obsidian9.Setting(el).setName(t("settings_enable_game", { game: "Pok\xE9mon" })).setDesc(t("settings_enable_game_desc")).addToggle(
       (tx) => {
         var _a;
         return tx.setValue((_a = this.plugin.settings.enabledGames["pokemon"]) != null ? _a : true).onChange(async (v) => {
@@ -3839,7 +4016,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
     );
     this.sectionTitle(el, t("settings_section_prices"));
     this.sectionDesc(el, t("settings_pokemon_price_source_desc"));
-    new import_obsidian8.Setting(el).setName(t("settings_pokemon_price_source")).addDropdown((d) => {
+    new import_obsidian9.Setting(el).setName(t("settings_pokemon_price_source")).addDropdown((d) => {
       var _a;
       d.addOption("tcgplayer", t("settings_pokemon_tcgplayer"));
       d.addOption("cardmarket", t("settings_pokemon_cardmarket"));
@@ -3862,7 +4039,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
       this.plugin.settings.enabledGames = { mtg: true, pokemon: true, onepiece: true, yugioh: true };
     }
     this.sectionTitle(el, `${icon}  ${label}`);
-    new import_obsidian8.Setting(el).setName(t("settings_enable_game", { game: label })).setDesc(t("settings_enable_game_desc")).addToggle(
+    new import_obsidian9.Setting(el).setName(t("settings_enable_game", { game: label })).setDesc(t("settings_enable_game_desc")).addToggle(
       (tx) => {
         var _a;
         return tx.setValue((_a = this.plugin.settings.enabledGames[game]) != null ? _a : true).onChange(async (v) => {
@@ -3883,7 +4060,7 @@ var CollectorsSettingTab = class extends import_obsidian8.PluginSettingTab {
 };
 
 // src/PriceService.ts
-var import_obsidian9 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 var providerCache = /* @__PURE__ */ new Map();
 function cacheKey(set, number) {
   return `${set.toLowerCase()}#${number}`;
@@ -4068,7 +4245,7 @@ var PriceService = class {
     for (let i = 0; i < uniqueIds.length; i += 250) {
       const batch = uniqueIds.slice(i, i + 250);
       try {
-        const res = await (0, import_obsidian9.requestUrl)({
+        const res = await (0, import_obsidian10.requestUrl)({
           url: `https://api.tcgplayer.com/v1.39.0/pricing/product/${batch.join(",")}`,
           headers: {
             Authorization: `Bearer ${this.settings.tcgplayerKey}`,
@@ -4126,7 +4303,7 @@ var PriceService = class {
             cardmarketAccessToken,
             cardmarketAccessSecret
           );
-          const res = await (0, import_obsidian9.requestUrl)({ url, headers: { Authorization: auth, Accept: "application/json" } });
+          const res = await (0, import_obsidian10.requestUrl)({ url, headers: { Authorization: auth, Accept: "application/json" } });
           if (res.status < 200 || res.status >= 300) return;
           const data = res.json;
           const pg = data.product.priceGuide;
@@ -4179,13 +4356,13 @@ async function buildOAuth1Header(method, url, appToken, appSecret, accessToken, 
 
 // src/main.ts
 var COLLECTORS_ICON = "collectors-card";
-var CollectorsPlugin = class extends import_obsidian10.Plugin {
+var CollectorsPlugin = class extends import_obsidian11.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
   }
   async onload() {
-    (0, import_obsidian10.addIcon)(COLLECTORS_ICON, `
+    (0, import_obsidian11.addIcon)(COLLECTORS_ICON, `
       <rect x="14" y="4" width="72" height="92" rx="7" ry="7" fill="none" stroke="currentColor" stroke-width="6"/>
       <rect x="22" y="12" width="56" height="40" rx="3" fill="currentColor" opacity="0.25"/>
       <line x1="22" y1="62" x2="78" y2="62" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>

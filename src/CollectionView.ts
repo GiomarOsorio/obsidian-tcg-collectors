@@ -3,6 +3,7 @@ import type CollectorsPlugin from './main';
 import { Collection, CollectionCard, SortBy } from './types';
 import { parseCollectionFile, setCardCount, appendCards, patchFrontmatter } from './parser';
 import { openCardZoom } from './CardZoomModal';
+import { openPokemonCardZoom } from './PokemonCardZoomModal';
 import { NewCollectionModal } from './NewCollectionModal';
 import { CardSearchModal } from './CardSearchModal';
 import {
@@ -383,7 +384,13 @@ export class CollectionView extends FileView {
         img.style.display = 'none';
         imgWrap.createEl('div', { cls: 'col-tile-img-fallback', text: card.name[0] ?? '?' });
       });
-      tile.addEventListener('click', () => openCardZoom(card.imageUrl, card.name, isFoil));
+      tile.addEventListener('click', () => {
+        if (coll.type === 'pokemon-set') {
+          openPokemonCardZoom(this.app, card);
+        } else {
+          openCardZoom(card.imageUrl, card.name, isFoil);
+        }
+      });
     } else {
       tile.createDiv({ cls: 'col-tile-img-fallback', text: card.name[0] ?? '?' });
     }
