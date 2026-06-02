@@ -202,6 +202,7 @@ export const en = {
   field_tcgdex_set_id_ph:   'e.g. swsh1, sv10, base1',
 
   // Pokémon notices
+  refetch_warning_pokemon: '⚠ All cards will be replaced with cards from the new set. Previously owned cards will have their status preserved.',
   notice_fetching_pokemon:          'Fetching Pokémon cards for "{name}"…',
   notice_fetching_pokemon_progress: 'Fetching {fetched}/{total} cards…',
   notice_pokemon_added:             'Added {count} new Pokémon cards to "{name}".',

@@ -158,6 +158,7 @@ export const es: Locale = {
   pokemon_variant_first_edition:   'Solo 1ra Edición',
   field_tcgdex_set_id_desc:        'El identificador del set en TCGdex. Búscalo en tcgdex.dev.',
   field_tcgdex_set_id_ph:          'ej. swsh1, sv10, base1',
+  refetch_warning_pokemon:         '⚠ Todas las cartas serán reemplazadas por las del nuevo set. Las cartas marcadas como poseídas conservarán su estado.',
   notice_fetching_pokemon:         'Obteniendo cartas de Pokémon para "{name}"…',
   notice_fetching_pokemon_progress:'Obteniendo {fetched}/{total} cartas…',
   notice_pokemon_added:            'Se agregaron {count} cartas de Pokémon a "{name}".',

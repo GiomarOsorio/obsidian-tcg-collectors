@@ -83,6 +83,11 @@ export class NewCollectionModal extends Modal {
   private pokemonFormType: 'catalog' | 'custom' = 'catalog';
   private pokemonVariantImport: PokemonVariantImport = 'all';
 
+  // Originals for change-detection in edit mode
+  private originalSetCode       = '';
+  private originalScryfallQuery = '';
+  private originalTcgdexSetId   = '';
+
   constructor(
     app: App,
     plugin: CollectorsPlugin,
@@ -107,6 +112,9 @@ export class NewCollectionModal extends Modal {
       this.autoFetch     = false;
       this.tcgdexSetId          = c.tcgdexSetId ?? '';
       this.pokemonVariantImport = c.pokemonVariantImport ?? 'all';
+      this.originalSetCode       = this.setCode;
+      this.originalScryfallQuery = this.scryfallQuery;
+      this.originalTcgdexSetId   = this.tcgdexSetId;
     }
   }
 
@@ -117,9 +125,15 @@ export class NewCollectionModal extends Modal {
     contentEl.createEl('h2', { cls: 'ncm-title', text: this.editTarget ? t('modal_edit_title') : t('modal_new_title') });
 
     const enabledGames = this.plugin.settings.enabledGames ?? {};
-    const visibleGames = GAME_ORDER.filter(g => enabledGames[g] !== false);
+    let visibleGames = GAME_ORDER.filter(g => enabledGames[g] !== false);
 
-    // Default to first enabled game
+    // In edit mode only show the game that owns this collection
+    if (this.editTarget) {
+      const editGame: TCGGame = this.editTarget.collection.type.startsWith('pokemon') ? 'pokemon' : 'mtg';
+      visibleGames = visibleGames.filter(g => g === editGame);
+    }
+
+    // Default to first visible game
     if (!visibleGames.includes(this.activeGame)) {
       this.activeGame = visibleGames[0] ?? 'mtg';
     }
@@ -182,13 +196,27 @@ export class NewCollectionModal extends Modal {
           .onChange(v => (this.name = v.trim()))
       );
 
+    let autoFetchToggleComp: any = null;
+    let refetchWarning: HTMLElement | null = null;
+
+    const syncRefetch = () => {
+      const changed = this.setCode !== this.originalSetCode
+                   || this.scryfallQuery !== this.originalScryfallQuery;
+      this.autoFetch = changed;
+      autoFetchToggleComp?.setValue(changed);
+      if (refetchWarning) refetchWarning.style.display = changed ? '' : 'none';
+    };
+
     const setCodeSetting = new Setting(el)
       .setName(t('field_set_code'))
       .setDesc(t('field_set_code_desc'))
       .addText(tx =>
         tx.setPlaceholder(t('field_set_code_ph'))
           .setValue(this.setCode)
-          .onChange(v => (this.setCode = v.trim().toLowerCase()))
+          .onChange(v => {
+            this.setCode = v.trim().toLowerCase();
+            if (this.editTarget) syncRefetch();
+          })
       );
 
     const finishSetting = new Setting(el)
@@ -233,21 +261,23 @@ export class NewCollectionModal extends Modal {
             ? `Query: ${parsed.query}${parsed.order ? `  |  order: ${parsed.order}` : ''}`
             : '';
           previewEl.style.display = parsed.query ? '' : 'none';
+          if (this.editTarget) syncRefetch();
         });
       });
 
     // move preview below the textarea
     queryWrap.appendChild(previewEl);
 
-    let refetchWarning: HTMLElement | null = null;
-
     const autoFetchSetting = new Setting(el)
       .setName(this.editTarget ? t('field_refetch') : t('field_autofetch'))
       .setDesc(this.editTarget ? t('field_refetch_desc') : t('field_autofetch_desc'))
-      .addToggle(tx => tx.setValue(this.autoFetch).onChange(v => {
-        this.autoFetch = v;
-        if (refetchWarning) refetchWarning.style.display = v ? '' : 'none';
-      }));
+      .addToggle(tx => {
+        autoFetchToggleComp = tx;
+        tx.setValue(this.autoFetch).onChange(v => {
+          this.autoFetch = v;
+          if (refetchWarning) refetchWarning.style.display = v ? '' : 'none';
+        });
+      });
 
     if (this.editTarget) {
       refetchWarning = el.createDiv({ cls: 'ncm-refetch-warning' });
@@ -305,6 +335,13 @@ export class NewCollectionModal extends Modal {
 
   private renderPokemonForm(el: HTMLElement) {
     let nameInputEl: HTMLInputElement | null = null;
+    let pokemonRefetchWarning: HTMLElement | null = null;
+
+    const syncPokemonRefetch = () => {
+      const changed = this.tcgdexSetId !== this.originalTcgdexSetId;
+      this.autoFetch = changed;
+      if (pokemonRefetchWarning) pokemonRefetchWarning.style.display = changed ? '' : 'none';
+    };
 
     new Setting(el)
       .setName(t('field_name'))
@@ -332,7 +369,9 @@ export class NewCollectionModal extends Modal {
     if (this.pokemonFormType === 'custom') catalogSection.style.display = 'none';
     else customSection.style.display = 'none';
 
-    this.renderSetCatalog(catalogSection, () => nameInputEl);
+    this.renderSetCatalog(catalogSection, () => nameInputEl, () => {
+      if (this.editTarget) syncPokemonRefetch();
+    });
 
     new Setting(customSection)
       .setName(t('field_tcgdex_set_id'))
@@ -340,8 +379,17 @@ export class NewCollectionModal extends Modal {
       .addText(tx =>
         tx.setPlaceholder(t('field_tcgdex_set_id_ph'))
           .setValue(this.tcgdexSetId)
-          .onChange(v => (this.tcgdexSetId = v.trim().toLowerCase()))
+          .onChange(v => {
+            this.tcgdexSetId = v.trim().toLowerCase();
+            if (this.editTarget) syncPokemonRefetch();
+          })
       );
+
+    if (this.editTarget) {
+      pokemonRefetchWarning = el.createDiv({ cls: 'ncm-refetch-warning' });
+      pokemonRefetchWarning.style.display = 'none';
+      pokemonRefetchWarning.setText(t('refetch_warning_pokemon'));
+    }
 
     catalogBtn.addEventListener('click', () => {
       this.pokemonFormType = 'catalog';
@@ -380,7 +428,11 @@ export class NewCollectionModal extends Modal {
       .addButton(btn => btn.setButtonText(t('btn_cancel')).onClick(() => this.close()));
   }
 
-  private renderSetCatalog(el: HTMLElement, getNameInput: () => HTMLInputElement | null) {
+  private renderSetCatalog(
+    el: HTMLElement,
+    getNameInput: () => HTMLInputElement | null,
+    onSetSelected?: () => void,
+  ) {
     const searchInput = el.createEl('input', {
       cls: 'ncm-set-search',
       attr: { type: 'text', placeholder: t('pokemon_set_search_ph') },
@@ -429,6 +481,7 @@ export class NewCollectionModal extends Modal {
             }
             listEl.querySelectorAll('.ncm-set-item').forEach(el => el.removeClass('ncm-set-item-selected'));
             item.addClass('ncm-set-item-selected');
+            onSetSelected?.();
           });
         }
 
