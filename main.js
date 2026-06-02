@@ -3137,7 +3137,7 @@ function openPokemonCardZoom(card) {
   cardEl.dataset.set = card.set;
   cardEl.dataset.number = card.number;
   cardEl.dataset.trainerGallery = "false";
-  cardEl.style.pointerEvents = "auto";
+  cardEl.style.cssText += ";height:min(80vh,760px);width:auto;display:block;pointer-events:auto";
   const cur = makeState(), tgt = makeState();
   applyVars(cardEl, cur);
   const translater = document.createElement("div");

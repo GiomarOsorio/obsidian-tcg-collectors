@@ -103,8 +103,11 @@ export function openPokemonCardZoom(card: CollectionCard): void {
   cardEl.dataset.number         = card.number;
   cardEl.dataset.trainerGallery = 'false';
 
-  // Force pointer events on card — base CSS sets pointer-events: none on .card
-  cardEl.style.pointerEvents = 'auto';
+  // Force size and pointer events via inline style — overrides any CSS.
+  // Size by height (aspect-ratio derives width) so the card is prominent
+  // regardless of pane width.
+  cardEl.style.cssText +=
+    ';height:min(80vh,760px);width:auto;display:block;pointer-events:auto';
 
   const cur = makeState(), tgt = makeState();
   applyVars(cardEl, cur);
