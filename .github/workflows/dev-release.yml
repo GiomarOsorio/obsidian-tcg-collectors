@@ -44,12 +44,17 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${VERSION}-dev"
           COMMIT="${GITHUB_SHA::7}"
+          cat > /tmp/release-notes.md << EOF
+          > [!WARNING]
+          > **Development build** - not for production use.
+
+          Built from commit \`${COMMIT}\` on \`dev\` branch.
+
+          **Install via BRAT:** Add \`GiomarOsorio/obsidian-tcg-collectors\` as a beta plugin.
+          Enable **"Enable beta testing for all plugins"** in BRAT settings to receive dev builds.
+          EOF
           gh release create "$TAG" \
             main.js manifest.json styles.css \
             --title "v${VERSION}-dev (${COMMIT})" \
-            --notes "⚠️ **Development build** — not for production use.
-
-Built from commit \`${COMMIT}\` on \`dev\` branch.
-
-**Install via BRAT:** Add \`GiomarOsorio/obsidian-tcg-collectors\` as a beta plugin and check **'Enable beta testing for all plugins'** to receive dev builds." \
+            --notes-file /tmp/release-notes.md \
             --prerelease
