@@ -270,6 +270,7 @@ export class DashboardView extends ItemView {
     nameRow.createEl('span', { cls: 'col-card-name', text: coll.name });
     if (coll.setCode) nameRow.createEl('span', { cls: 'col-badge', text: coll.setCode });
     if (coll.tcgdexSetId) nameRow.createEl('span', { cls: 'col-badge', text: coll.tcgdexSetId });
+    if (coll.type === 'mtg-theme') nameRow.createEl('span', { cls: 'col-badge col-badge-custom', text: t('badge_custom') });
     if (coll.format === 'arena') nameRow.createEl('span', { cls: 'col-badge col-badge-arena', text: t('badge_arena') });
 
     const progressWrap = info.createDiv({ cls: 'col-progress-wrap' });

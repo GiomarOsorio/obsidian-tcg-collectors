@@ -225,6 +225,11 @@
   color: #fff;
 }
 
+.col-badge-custom {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
 /* ── Progress bar ─────────────────────────────────────────────────────────────── */
 .col-progress-wrap {
   display: flex;

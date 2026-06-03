@@ -22,6 +22,7 @@ export const en = {
 
   // Collection card
   badge_arena:             'Arena',
+  badge_custom:            'Custom',
   card_owned_count:        '{count} owned',
   card_total_count:        '{count} total',
   card_missing_count:      '{count} missing',
