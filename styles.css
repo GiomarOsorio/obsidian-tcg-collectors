@@ -226,8 +226,8 @@
 }
 
 .col-badge-custom {
-  background: var(--background-modifier-border);
-  color: var(--text-muted);
+  background: var(--color-green, #4caf50);
+  color: #fff;
 }
 
 /* ── Progress bar ─────────────────────────────────────────────────────────────── */
@@ -1129,6 +1129,32 @@
 
 .pkmn-zoom-overlay.pkmn-zoom-active {
   background: rgba(0, 0, 0, 0.85);
+}
+
+/* Gyroscope toggle — mobile only, shown by JS when touch device detected */
+.pkmn-gyro-btn {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.4em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  z-index: 10001;
+}
+
+.pkmn-gyro-btn-active {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: rgba(0, 0, 0, 0.7);
 }
 
 /* ── pokemon-cards-151 base.css — scoped to .pkmn-zoom-wrapper ──────────────────

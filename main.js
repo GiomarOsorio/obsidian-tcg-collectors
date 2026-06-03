@@ -3273,12 +3273,14 @@ function openPokemonCardZoom(card, tcgCard) {
     cardEl.classList.remove("interacting");
     if (!rafId) rafId = requestAnimationFrame(tick);
   });
+  const isTouchDevice = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  let gyroActive = false;
   let baseGamma = null;
   let baseBeta = null;
   const LIMIT_X = 16, LIMIT_Y = 18;
   const onOrientation = (e) => {
     var _a2, _b2;
-    if (isHovering) return;
+    if (!gyroActive || isHovering) return;
     const gamma = (_a2 = e.gamma) != null ? _a2 : 0;
     const beta = (_b2 = e.beta) != null ? _b2 : 0;
     if (baseGamma === null) {
@@ -3299,6 +3301,39 @@ function openPokemonCardZoom(card, tcgCard) {
     if (!rafId) rafId = requestAnimationFrame(tick);
   };
   window.addEventListener("deviceorientation", onOrientation, true);
+  if (isTouchDevice && "DeviceOrientationEvent" in window) {
+    const gyroBtn = overlay.createEl("button", { cls: "pkmn-gyro-btn", attr: { title: "Gyroscope" } });
+    gyroBtn.innerHTML = "\u27F2";
+    const activateGyro = () => {
+      gyroActive = true;
+      baseGamma = null;
+      baseBeta = null;
+      gyroBtn.classList.add("pkmn-gyro-btn-active");
+    };
+    gyroBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (gyroActive) {
+        gyroActive = false;
+        baseGamma = null;
+        baseBeta = null;
+        gyroBtn.classList.remove("pkmn-gyro-btn-active");
+        resetTargets();
+        cardEl.classList.remove("interacting");
+        if (!rafId) rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const DOE = DeviceOrientationEvent;
+      if (typeof DOE.requestPermission === "function") {
+        try {
+          const result = await DOE.requestPermission();
+          if (result === "granted") activateGyro();
+        } catch (e2) {
+        }
+      } else {
+        activateGyro();
+      }
+    });
+  }
   const close = () => {
     cancelAnimationFrame(rafId);
     window.removeEventListener("deviceorientation", onOrientation, true);
