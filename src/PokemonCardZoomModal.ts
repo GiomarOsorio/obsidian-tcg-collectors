@@ -217,23 +217,20 @@ export function openPokemonCardZoom(card: CollectionCard, tcgCard?: TCGDexCard):
     if (!rafId) rafId = requestAnimationFrame(tick);
   });
 
-  // ── Device orientation (gyroscope) — mobile tilt effect ──────────────────────
-  // gamma = left/right tilt (-90..90), beta = front/back tilt (-180..180)
-  // Baseline captured on first reading so effect is relative to how phone is held.
+  // ── Device orientation (gyroscope) — mobile only ─────────────────────────────
+  const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  let gyroActive = false;
   let baseGamma: number | null = null;
   let baseBeta:  number | null = null;
   const LIMIT_X = 16, LIMIT_Y = 18;
 
   const onOrientation = (e: DeviceOrientationEvent) => {
-    if (isHovering) return; // pointer/touch takes priority
+    if (!gyroActive || isHovering) return;
     const gamma = e.gamma ?? 0;
     const beta  = e.beta  ?? 0;
-
     if (baseGamma === null) { baseGamma = gamma; baseBeta = beta; return; }
-
     const dx = clamp(gamma - baseGamma,          -LIMIT_X, LIMIT_X);
     const dy = clamp(beta  - (baseBeta ?? beta), -LIMIT_Y, LIMIT_Y);
-
     tgtRx = dx * -1;
     tgtRy = dy;
     tgtPx = adjustRange(dx, -LIMIT_X, LIMIT_X, 0, 100);
@@ -241,12 +238,47 @@ export function openPokemonCardZoom(card: CollectionCard, tcgCard?: TCGDexCard):
     tgtOp = Math.min(0.2 + Math.sqrt((dx/LIMIT_X)**2 + (dy/LIMIT_Y)**2) * 0.7, 1);
     tgtBx = adjustRange(dx, -LIMIT_X, LIMIT_X, 37, 63);
     tgtBy = adjustRange(dy, -LIMIT_Y, LIMIT_Y, 33, 67);
-
     cardEl.classList.add('interacting');
     if (!rafId) rafId = requestAnimationFrame(tick);
   };
 
   window.addEventListener('deviceorientation', onOrientation, true);
+
+  // Gyroscope toggle button — only on touch/mobile devices
+  if (isTouchDevice && ('DeviceOrientationEvent' in window)) {
+    const gyroBtn = overlay.createEl('button', { cls: 'pkmn-gyro-btn', attr: { title: 'Gyroscope' } });
+    gyroBtn.innerHTML = '⟲';
+
+    const activateGyro = () => {
+      gyroActive = true;
+      baseGamma = null;
+      baseBeta  = null;
+      gyroBtn.classList.add('pkmn-gyro-btn-active');
+    };
+
+    gyroBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (gyroActive) {
+        gyroActive = false;
+        baseGamma = null; baseBeta = null;
+        gyroBtn.classList.remove('pkmn-gyro-btn-active');
+        resetTargets();
+        cardEl.classList.remove('interacting');
+        if (!rafId) rafId = requestAnimationFrame(tick);
+        return;
+      }
+      // iOS 13+ requires explicit permission
+      const DOE = DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> };
+      if (typeof DOE.requestPermission === 'function') {
+        try {
+          const result = await DOE.requestPermission();
+          if (result === 'granted') activateGyro();
+        } catch { /* denied */ }
+      } else {
+        activateGyro();
+      }
+    });
+  }
 
   // ── Close ─────────────────────────────────────────────────────────────────────
   const close = () => {
