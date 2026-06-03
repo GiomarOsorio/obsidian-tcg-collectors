@@ -683,6 +683,7 @@ var en = {
   group_theme: "Theme Collections",
   // Collection card
   badge_arena: "Arena",
+  badge_custom: "Custom",
   card_owned_count: "{count} owned",
   card_total_count: "{count} total",
   card_missing_count: "{count} missing",
@@ -2922,6 +2923,7 @@ var DashboardView = class extends import_obsidian5.ItemView {
     nameRow.createEl("span", { cls: "col-card-name", text: coll.name });
     if (coll.setCode) nameRow.createEl("span", { cls: "col-badge", text: coll.setCode });
     if (coll.tcgdexSetId) nameRow.createEl("span", { cls: "col-badge", text: coll.tcgdexSetId });
+    if (coll.type === "mtg-theme") nameRow.createEl("span", { cls: "col-badge col-badge-custom", text: t("badge_custom") });
     if (coll.format === "arena") nameRow.createEl("span", { cls: "col-badge col-badge-arena", text: t("badge_arena") });
     const progressWrap = info.createDiv({ cls: "col-progress-wrap" });
     const bar = progressWrap.createDiv({ cls: "col-progress-bar" });
